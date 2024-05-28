@@ -1,0 +1,47 @@
+{
+    "name": "jobmetric/laravel-slug",
+    "description": "It is a package for slug storage management in each model that you can use in your Laravel projects.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "jobmetric",
+        "package",
+        "slug",
+        "trait",
+        "model"
+    ],
+    "homepage": "https://doc.jobmetric.net/package/laravel-slug",
+    "authors": [
+        {
+            "name": "Majid Mohammadian",
+            "email": "majeedmohammadian@gmail.com",
+            "homepage": "https://www.linkedin.com/in/majidmohammadian/",
+            "role": "Full Stack Developer"
+        }
+    ],
+    "require": {
+        "php": ">=8.0.1",
+        "ext-json": "*",
+        "laravel/framework": ">=9.19",
+        "jobmetric/laravel-package-core": "^1.7"
+    },
+    "autoload": {
+        "psr-4": {
+            "JobMetric\\Slug\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "JobMetric\\Slug\\SlugServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "support": {
+        "issues": "https://github.com/jobmetric/laravel-slug/issues",
+        "forum": "https://twitter.com/jobmetric",
+        "source": "https://github.com/jobmetric/laravel-slug"
+    }
+}
