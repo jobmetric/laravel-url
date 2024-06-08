@@ -15,6 +15,7 @@ class UrlServiceProvider extends PackageCoreServiceProvider
     {
         $package->name('laravel-url')
             ->hasConfig()
+            ->hasTranslation()
             ->hasMigration();
     }
 }
