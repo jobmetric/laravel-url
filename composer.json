@@ -28,6 +28,9 @@
         "jobmetric/laravel-package-core": "^1.7"
     },
     "autoload": {
+        "files": [
+            "src/helpers.php"
+        ],
         "psr-4": {
             "JobMetric\\Url\\": "src/"
         }
@@ -36,7 +39,10 @@
         "laravel": {
             "providers": [
                 "JobMetric\\Url\\UrlServiceProvider"
-            ]
+            ],
+            "aliases": {
+                "Url": "JobMetric\\Url\\Facades\\Url"
+            }
         }
     },
     "minimum-stability": "stable",
