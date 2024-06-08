@@ -2,13 +2,15 @@
 
 namespace JobMetric\Url\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
-use Illuminate\Database\Eloquent\Builder;
+use JobMetric\Url\Events\UrlableResourceEvent;
 
 /**
  * @property int id
+ * @property mixed urlable
  * @property string urlable_type
  * @property int urlable_id
  * @property string url
@@ -90,5 +92,13 @@ class Url extends Model
     public function scopeOfCollection(Builder $query, string $collection): Builder
     {
         return $query->where('collection', $collection);
+    }
+
+    public function getUrlableResourceAttribute()
+    {
+        $event = new UrlableResourceEvent($this->urlable);
+        event($event);
+
+        return $event->resource;
     }
 }
