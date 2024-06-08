@@ -1,0 +1,28 @@
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Base url Language Lines
+    |--------------------------------------------------------------------------
+    |
+    | The following language lines are used during Url for
+    | various messages that we need to display to the user.
+    |
+    */
+
+    'validation' => [
+        'errors' => 'Validation errors occurred.',
+        'url_too_long' => 'The url is too long.',
+        'not_found' => 'The url not found.',
+    ],
+
+    'messages' => [
+        'found' => 'The url was found successfully.',
+        'created' => 'The url was created successfully.',
+        'updated' => 'The url was updated successfully.',
+        'deleted' => 'The url was deleted successfully.',
+    ],
+
+];
