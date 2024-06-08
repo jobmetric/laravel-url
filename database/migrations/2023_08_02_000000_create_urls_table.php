@@ -16,7 +16,7 @@ return new class extends Migration {
             $table->id();
 
             $table->morphs('urlable');
-            $table->string('url', 1024)->index();
+            $table->string('url', config('url.url_long'))->unique()->index();
 
             $table->string('collection')->nullable()->index();
 
@@ -25,7 +25,6 @@ return new class extends Migration {
             $table->unique([
                 'urlable_type',
                 'urlable_id',
-                'url',
                 'collection'
             ], 'URL_UNIQUE');
         });
