@@ -12,18 +12,21 @@ return new class extends Migration {
      */
     public function up(): void
     {
-        Schema::create(config('slug.tables.url'), function (Blueprint $table) {
+        Schema::create(config('url.tables.url'), function (Blueprint $table) {
             $table->id();
 
             $table->morphs('urlable');
             $table->string('url', 1024)->index();
+
+            $table->string('collection')->nullable()->index();
 
             $table->timestamps();
 
             $table->unique([
                 'urlable_type',
                 'urlable_id',
-                'url'
+                'url',
+                'collection'
             ], 'URL_UNIQUE');
         });
 
@@ -37,7 +40,7 @@ return new class extends Migration {
      */
     public function down(): void
     {
-        Schema::dropIfExists(config('slug.tables.url'));
+        Schema::dropIfExists(config('url.tables.url'));
 
         cache()->forget('url');
     }
