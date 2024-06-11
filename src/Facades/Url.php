@@ -24,6 +24,6 @@ class Url extends Facade
      */
     protected static function getFacadeAccessor(): string
     {
-        return 'Url';
+        return \JobMetric\Url\Url::class;
     }
 }
