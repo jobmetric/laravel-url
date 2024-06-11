@@ -37,6 +37,6 @@ return [
     | Url long for url
      */
 
-    "url_long" => env("URL_LONG", 1024),
+    "url_long" => env("URL_LONG", 768),
 
 ];
