@@ -3,8 +3,10 @@
 namespace JobMetric\Url;
 
 use Illuminate\Database\Eloquent\Model;
+use JobMetric\Url\Exceptions\UrlNotFoundException;
 use JobMetric\Url\Facades\Url as UrlFacade;
 use JobMetric\Url\Http\Resources\UrlResource;
+use Throwable;
 
 /**
  * Trait Urlable
@@ -123,6 +125,7 @@ trait Urlable
      * @param string $url
      *
      * @return Model|null
+     * @throws Throwable
      */
     public static function findByUrlOrFail(string $url): ?Model
     {
@@ -131,7 +134,7 @@ trait Urlable
         if ($model) {
             return $model;
         } else {
-            abort(404);
+            throw new UrlNotFoundException;
         }
     }
 
@@ -139,11 +142,11 @@ trait Urlable
      * find the model by URL and collection
      *
      * @param string $url
-     * @param string $collection
+     * @param string|null $collection
      *
      * @return Model|null
      */
-    public static function findByUrlAndCollection(string $url, string $collection): ?Model
+    public static function findByUrlAndCollection(string $url, string $collection = null): ?Model
     {
         $url = UrlFacade::getByUrl($url);
 
@@ -158,18 +161,19 @@ trait Urlable
      * find the model by URL and collection or fail
      *
      * @param string $url
-     * @param string $collection
+     * @param string|null $collection
      *
      * @return Model|null
+     * @throws Throwable
      */
-    public static function findByUrlAndCollectionOrFail(string $url, string $collection): ?Model
+    public static function findByUrlAndCollectionOrFail(string $url, string $collection = null): ?Model
     {
         $model = static::findByUrlAndCollection($url, $collection);
 
         if ($model) {
             return $model;
         } else {
-            abort(404);
+            throw new UrlNotFoundException;
         }
     }
 
