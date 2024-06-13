@@ -9,6 +9,6 @@ class UrlNotFoundException extends Exception
 {
     public function __construct(int $code = 400, ?Throwable $previous = null)
     {
-        parent::__construct('Url not found', $code, $previous);
+        parent::__construct(trans('url::base.exceptions.not_found'), $code, $previous);
     }
 }

@@ -59,7 +59,7 @@ class Url
         } else {
             return [
                 'ok' => false,
-                'message' => trans('url::base.messages.not_found'),
+                'message' => trans('url::base.validation.not_found'),
                 'status' => 404
             ];
         }
@@ -90,7 +90,7 @@ class Url
         } else {
             return [
                 'ok' => false,
-                'message' => trans('url::base.messages.not_found'),
+                'message' => trans('url::base.validation.not_found'),
                 'status' => 404
             ];
         }
@@ -111,7 +111,7 @@ class Url
         if (strlen($url) >= config('url.url_long')) {
             return [
                 'ok' => false,
-                'message' => trans('url::base.messages.url_too_long'),
+                'message' => trans('url::base.validation.url_too_long'),
                 'status' => 400
             ];
         }
@@ -181,7 +181,7 @@ class Url
         } else {
             return [
                 'ok' => false,
-                'message' => trans('url::base.messages.not_found'),
+                'message' => trans('url::base.validation.not_found'),
                 'status' => 404
             ];
         }
@@ -213,7 +213,7 @@ class Url
         } else {
             return [
                 'ok' => false,
-                'message' => trans('url::base.messages.not_found'),
+                'message' => trans('url::base.validation.not_found'),
                 'status' => 404
             ];
         }
@@ -248,7 +248,7 @@ class Url
         } else {
             return [
                 'ok' => false,
-                'message' => trans('url::base.messages.not_found'),
+                'message' => trans('url::base.validation.not_found'),
                 'status' => 404
             ];
         }

@@ -25,4 +25,8 @@ return [
         'deleted' => 'The url was deleted successfully.',
     ],
 
+    'exceptions' => [
+        'not_found' => 'Url not found',
+    ],
+
 ];
