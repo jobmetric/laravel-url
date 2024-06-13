@@ -3,7 +3,6 @@
 namespace JobMetric\Url\Tests;
 
 use App\Models\Product;
-use JobMetric\Category\Facades\Category;
 use JobMetric\Url\Exceptions\UrlNotFoundException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Tests\BaseDatabaseTestCase as BaseTestCase;
