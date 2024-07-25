@@ -99,6 +99,10 @@ $product->forgetUrl('product');
 
 In this example, we retrieved a product from the database and then forgot the url for the product using the `forgetUrl` method. The parameter is the type of url.
 
+## Contributing
+
+Thank you for considering contributing to the Laravel Url! The contribution guide can be found in the [CONTRIBUTING.md](https://github.com/jobmetric/laravel-url/blob/master/CONTRIBUTING.md).
+
 ## License
 
-The MIT License (MIT). Please see [License File](https://github.com/jobmetric/laravel-url/blob/master/README.md) for more information.
+The MIT License (MIT). Please see [License File](https://github.com/jobmetric/laravel-url/blob/master/LICENCE.md) for more information.
