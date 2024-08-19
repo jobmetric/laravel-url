@@ -4,6 +4,7 @@ namespace JobMetric\Url;
 
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
+use JobMetric\Url\Exceptions\UrlTooLongException;
 use JobMetric\Url\Http\Resources\UrlResource;
 use JobMetric\Url\Models\Url as UrlModel;
 use Throwable;
@@ -109,11 +110,7 @@ class Url
     public function dispatch(Model $urlable, string $url, string $collection = null): array
     {
         if (strlen($url) >= config('url.url_long')) {
-            return [
-                'ok' => false,
-                'message' => trans('url::base.validation.url_too_long'),
-                'status' => 400
-            ];
+            throw new UrlTooLongException;
         }
 
         /**

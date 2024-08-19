@@ -14,7 +14,6 @@ return [
 
     'validation' => [
         'errors' => 'Validation errors occurred.',
-        'url_too_long' => 'The url is too long.',
         'not_found' => 'The url not found.',
     ],
 
@@ -27,6 +26,7 @@ return [
 
     'exceptions' => [
         'not_found' => 'Url not found',
+        'url_too_long' => 'The url is too long.',
     ],
 
 ];
