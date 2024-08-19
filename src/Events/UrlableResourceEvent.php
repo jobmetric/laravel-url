@@ -2,8 +2,6 @@
 
 namespace JobMetric\Url\Events;
 
-use JobMetric\Url\Models\Url;
-
 class UrlableResourceEvent
 {
     /**

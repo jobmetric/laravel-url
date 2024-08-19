@@ -9,7 +9,7 @@ use JobMetric\Url\Http\Resources\UrlResource;
 use Throwable;
 
 /**
- * Trait Urlable
+ * Trait HasUrl
  *
  * @package JobMetric\Url
  *
@@ -17,7 +17,7 @@ use Throwable;
  * @property UrlResource url_resource
  * @property string url_collection
  */
-trait Urlable
+trait HasUrl
 {
     /**
      * Get the URL for the model.

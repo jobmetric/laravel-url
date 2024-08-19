@@ -41,16 +41,16 @@ Now, let's delve into the core functionality.
 php artisan migrate
 ```
 
-Meet the `Urlable` class, meticulously designed for integration into your model. This class automates essential tasks, ensuring a streamlined process for:
+Meet the `HasUrl` class, meticulously designed for integration into your model. This class automates essential tasks, ensuring a streamlined process for:
 
 In the first step, you need to connect this class to your main model.
 
 ```php
-use JobMetric\Url\Urlable;
+use JobMetric\Url\HasUrl;
 
 class Product extends Model
 {
-    use Urlable;
+    use HasUrl;
 }
 ```
 
@@ -58,7 +58,7 @@ class Product extends Model
 
 ### Storing a url
 
-You can now use the `Urlable` class to store urls for your model. The following example shows how to create a new product by saving a url:
+You can now use the `HasUrl` class to store urls for your model. The following example shows how to create a new product by saving a url:
 
 ```php
 $product = new Product();
