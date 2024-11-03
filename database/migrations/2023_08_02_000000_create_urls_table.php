@@ -28,8 +28,6 @@ return new class extends Migration {
                 'collection'
             ], 'URL_UNIQUE');
         });
-
-        cache()->forget('url');
     }
 
     /**
@@ -40,7 +38,5 @@ return new class extends Migration {
     public function down(): void
     {
         Schema::dropIfExists(config('url.tables.url'));
-
-        cache()->forget('url');
     }
 };
