@@ -33,8 +33,8 @@ return [
         "url_too_long" => "The url is too long.",
     ],
 
-    "fields" => [
-        "slug" => [
+    "components" => [
+        "url_slug" => [
             "title" => "Slug",
             "placeholder" => "Enter the slug.",
             "description" => "The 'slug' is a version of the name that is appropriate for a web address. It is usually all lowercase and contains only letters, numbers, and hyphens.",
