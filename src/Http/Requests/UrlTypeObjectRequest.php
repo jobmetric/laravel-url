@@ -10,11 +10,10 @@ trait UrlTypeObjectRequest
         array    &$rules,
         string   $class_name,
         string   $collection,
-        string   $field_name = 'slug',
         int|null $object_id = null,
     ): void
     {
-        $rules[$field_name] = [
+        $rules['slug'] = [
             'string',
             'nullable',
             'sometimes',

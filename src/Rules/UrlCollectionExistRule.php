@@ -48,6 +48,6 @@ class UrlCollectionExistRule implements Rule
      */
     public function message(): string
     {
-        return trans('url::base.rule.exist', ['field' => $this->collection]);
+        return trans('url::base.rule.exist', ['field' => trans('url::base.fields.slug.title')]);
     }
 }
