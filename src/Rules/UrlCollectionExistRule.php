@@ -29,14 +29,13 @@ class UrlCollectionExistRule implements Rule
      */
     public function passes($attribute, $value): bool
     {
-        $_url = (new Url)->getTable();
-
         $query = Url::query();
 
-        $query->where($_url . '.urlable_type', $this->class_name)
-            ->where($_url . '.collection', $this->collection)
-            ->when($this->object_id, function (Builder $q) use ($_url) {
-                $q->where($_url . '.urlable_id', '!=', $this->object_id);
+        $query->where('urlable_type', $this->class_name)
+            ->where('collection', $this->collection)
+            ->where('url', $value)
+            ->when($this->object_id, function (Builder $q) {
+                $q->where('urlable_id', '!=', $this->object_id);
             });
 
         return !$query->exists();
