@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * @see \JobMetric\Url\Url
  *
- * @method static array get(Model $urlable, string $collection = null)
+ * @method static array get(Model $urlable, string $collection = null, bool $mode = false)
  * @method static array getByUrl(string $url)
  * @method static array dispatch(Model $urlable, string $url, string $collection = null)
  * @method static array forget(Model $urlable, string $collection = null)

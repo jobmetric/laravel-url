@@ -35,11 +35,12 @@ class Url
      *
      * @param Model $urlable
      * @param string|null $collection
+     * @param boolean $mode
      *
-     * @return array
+     * @return array|string|null
      * @throws Throwable
      */
-    public function get(Model $urlable, string $collection = null): array
+    public function get(Model $urlable, string $collection = null, bool $mode = false): array|string|null
     {
         /**
          * @var UrlModel $url_model
@@ -51,6 +52,10 @@ class Url
         ])->first();
 
         if ($url_model) {
+            if ($mode) {
+                return $url_model->url;
+            }
+
             return [
                 'ok' => true,
                 'message' => trans('url::base.messages.found'),
@@ -58,6 +63,10 @@ class Url
                 'status' => 200
             ];
         } else {
+            if ($mode) {
+                return null;
+            }
+
             return [
                 'ok' => false,
                 'message' => trans('url::base.validation.not_found'),

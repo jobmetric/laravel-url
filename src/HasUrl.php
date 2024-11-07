@@ -34,13 +34,14 @@ trait HasUrl
      * Get the URL by collection for the model.
      *
      * @param string|null $collection
+     * @param bool $mode
      *
-     * @return array
+     * @return array|string|null
      */
-    public function urlByCollection(string $collection = null): array
+    public function urlByCollection(string $collection = null, bool $mode = false): array|string|null
     {
         /** @var Model $this */
-        return UrlFacade::get($this, $collection);
+        return UrlFacade::get($this, $collection, $mode);
     }
 
     /**
