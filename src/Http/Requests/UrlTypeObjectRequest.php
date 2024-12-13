@@ -2,22 +2,36 @@
 
 namespace JobMetric\Url\Http\Requests;
 
+use JobMetric\Translation\ServiceType\Translation;
 use JobMetric\Url\Rules\UrlCollectionExistRule;
 
 trait UrlTypeObjectRequest
 {
     public function renderUrlFiled(
         array    &$rules,
+        bool     $hasUrl,
         string   $class_name,
         string   $collection,
         int|null $object_id = null,
     ): void
     {
-        $rules['slug'] = [
-            'string',
-            'nullable',
-            'sometimes',
-            new UrlCollectionExistRule($class_name, $collection, $object_id),
-        ];
+        if ($hasUrl) {
+            $rules['slug'] = [
+                'string',
+                'nullable',
+                'sometimes',
+                new UrlCollectionExistRule($class_name, $collection, $object_id),
+            ];
+        }
+    }
+
+    public function renderUrlAttribute(
+        array &$params,
+        bool  $hasUrl,
+    ): void
+    {
+        if ($hasUrl) {
+            $params['slug'] = trans('url::base.components.url_slug.title');
+        }
     }
 }
