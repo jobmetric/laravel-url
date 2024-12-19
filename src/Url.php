@@ -110,13 +110,13 @@ class Url
      * dispatch url
      *
      * @param Model $urlable
-     * @param string $url
+     * @param string|null $url
      * @param string|null $collection
      *
      * @return array
      * @throws Throwable
      */
-    public function dispatch(Model $urlable, string $url, string $collection = null): array
+    public function dispatch(Model $urlable, string|null $url, string $collection = null): array
     {
         if (strlen($url) >= config('url.url_long')) {
             throw new UrlTooLongException;
@@ -135,17 +135,24 @@ class Url
         $status = $url_model ? 200 : 201;
 
         if ($url_model) {
-            $url_model->url = $url;
+            if ($url) {
+                $url_model->url = $url;
 
-            $url_model->save();
+                $url_model->save();
+            } else {
+                $mode = 'deleted';
+                $url_model->delete();
+            }
         } else {
-            $url_model = new UrlModel;
+            if ($url) {
+                $url_model = new UrlModel;
 
-            $url_model->urlable()->associate($urlable);
-            $url_model->url = $url;
-            $url_model->collection = $collection;
+                $url_model->urlable()->associate($urlable);
+                $url_model->url = $url;
+                $url_model->collection = $collection;
 
-            $url_model->save();
+                $url_model->save();
+            }
         }
 
         return [

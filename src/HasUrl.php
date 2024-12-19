@@ -181,12 +181,12 @@ trait HasUrl
     /**
      * dispatch the URL for the model
      *
-     * @param string $url
+     * @param string|null $url
      * @param string|null $collection
      *
      * @return array
      */
-    public function dispatchUrl(string $url, string $collection = null): array
+    public function dispatchUrl(string|null $url, string $collection = null): array
     {
         /** @var Model $this */
         return UrlFacade::dispatch($this, $url, $collection);
