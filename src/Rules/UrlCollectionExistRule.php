@@ -9,10 +9,10 @@ use JobMetric\Url\Models\Url;
 class UrlCollectionExistRule implements Rule
 {
     private string $class_name;
-    private string $collection;
+    private string|null $collection;
     private int|null $object_id;
 
-    public function __construct(string $class_name, string $collection, int|null $object_id = null)
+    public function __construct(string $class_name, string $collection = null, int|null $object_id = null)
     {
         $this->class_name = $class_name;
         $this->collection = $collection;
