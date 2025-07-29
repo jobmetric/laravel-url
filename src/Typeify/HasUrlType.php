@@ -1,13 +1,13 @@
 <?php
 
-namespace JobMetric\Url;
+namespace JobMetric\Url\Typeify;
 
 /**
- * Trait UrlServiceType
+ * Trait HasUrlType
  *
  * @package JobMetric\Url
  */
-trait UrlServiceType
+trait HasUrlType
 {
     /**
      * Enable Url.
