@@ -6,43 +6,75 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Carbon;
 use JobMetric\Url\Events\UrlableResourceEvent;
 
 /**
- * @property int id
- * @property mixed urlable
- * @property string urlable_type
- * @property int urlable_id
- * @property string url
- * @property string collection
- * @property mixed created_at
- * @property mixed updated_at
+ * Class Url
+ *
+ * Represents a URL (slug) entry associated with any Eloquent model
+ * via a polymorphic relation.
+ *
+ * This model is designed to store and resolve slugs for models such as posts,
+ * products, users, etc., providing a central place to manage friendly URLs.
+ *
+ * @package JobMetric\Url
+ *
+ * @property int $id The primary identifier of the URL row.
+ * @property string $urlable_type The class name of the related model.
+ * @property int $urlable_id The ID of the related model instance.
+ * @property string $url The unique URL (slug) value for the model instance.
+ * @property Carbon $created_at The timestamp when this URL was created.
+ * @property Carbon $updated_at The timestamp when this URL was last updated.
+ *
+ * @property-read Model|MorphTo $urlable The related Eloquent model.
+ * @property-read mixed $urlable_resource The resource object resolved for the urlable via event.
+ *
+ * @method static Builder|Url whereUrlableType(string $urlable_type)
+ * @method static Builder|Url whereUrlableId(int $urlable_id)
+ * @method static Builder|Url whereUrl(string $url)
+ *
+ * @method static Builder|Url ofUrlable(string $urlable_type, int $urlable_id)
+ * @method static Builder|Url ofUrl(string $url)
  */
 class Url extends Model
 {
     use HasFactory;
 
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
     protected $fillable = [
         'urlable_type',
         'urlable_id',
         'url',
-        'collection'
     ];
 
+    /**
+     * The attributes that should be cast to native types.
+     *
+     * @var array<string, string>
+     */
     protected $casts = [
         'urlable_type' => 'string',
         'urlable_id' => 'integer',
         'url' => 'string',
-        'collection' => 'string'
     ];
 
-    public function getTable()
+    /**
+     * Override the table name using config.
+     *
+     * @return string
+     */
+    public function getTable(): string
     {
         return config('url.tables.url', parent::getTable());
     }
 
     /**
-     * urlable relationship
+     * Get the parent urlable model (morph-to relation).
      *
      * @return MorphTo
      */
@@ -52,7 +84,7 @@ class Url extends Model
     }
 
     /**
-     * Scope a query to only include urls of a given urlable.
+     * Scope a query to only include URLs of a given urlable.
      *
      * @param Builder $query
      * @param string $urlable_type
@@ -69,7 +101,7 @@ class Url extends Model
     }
 
     /**
-     * Scope a query to only include urls of a given url.
+     * Scope a query to only include a specific URL value.
      *
      * @param Builder $query
      * @param string $url
@@ -82,19 +114,13 @@ class Url extends Model
     }
 
     /**
-     * Scope a query to only include urls of a given collection.
+     * Accessor to get the resource representation of the urlable model.
+     * Fires the UrlableResourceEvent to allow external listeners
+     * to transform the urlable into a resource.
      *
-     * @param Builder $query
-     * @param string $collection
-     *
-     * @return Builder
+     * @return mixed
      */
-    public function scopeOfCollection(Builder $query, string $collection): Builder
-    {
-        return $query->where('collection', $collection);
-    }
-
-    public function getUrlableResourceAttribute()
+    public function getUrlableResourceAttribute(): mixed
     {
         $event = new UrlableResourceEvent($this->urlable);
         event($event);
