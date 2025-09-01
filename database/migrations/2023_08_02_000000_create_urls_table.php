@@ -45,7 +45,7 @@ return new class extends Migration {
 
             // Enforce per-record uniqueness of a given URL
             $table->unique(
-                ['urlable_type', 'urlable_id', 'url', 'collection'],
+                ['urlable_type', 'urlable_id'],
                 'URL_UNIQUE'
             );
         });
