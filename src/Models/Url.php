@@ -24,6 +24,7 @@ use JobMetric\Url\Events\UrlableResourceEvent;
  * @property string $urlable_type The class name of the related model.
  * @property int $urlable_id The ID of the related model instance.
  * @property string $url The unique URL (slug) value for the model instance.
+ * @property string|null $collection An optional collection name to group URLs.
  * @property Carbon $created_at The timestamp when this URL was created.
  * @property Carbon $updated_at The timestamp when this URL was last updated.
  *
@@ -36,6 +37,7 @@ use JobMetric\Url\Events\UrlableResourceEvent;
  *
  * @method static Builder|Url ofUrlable(string $urlable_type, int $urlable_id)
  * @method static Builder|Url ofUrl(string $url)
+ * @method static Builder|Url ofCollection(string|null $collection = null)
  */
 class Url extends Model
 {
@@ -50,6 +52,7 @@ class Url extends Model
         'urlable_type',
         'urlable_id',
         'url',
+        'collection',
     ];
 
     /**
@@ -61,6 +64,7 @@ class Url extends Model
         'urlable_type' => 'string',
         'urlable_id' => 'integer',
         'url' => 'string',
+        'collection' => 'string',
     ];
 
     /**
@@ -111,6 +115,21 @@ class Url extends Model
     public function scopeOfUrl(Builder $query, string $url): Builder
     {
         return $query->where('url', $url);
+    }
+
+    /**
+     * Scope a query to only include URLs in a specific collection.
+     *
+     * @param Builder $query
+     * @param string|null $collection
+     *
+     * @return Builder
+     */
+    public function scopeOfCollection(Builder $query, ?string $collection = null): Builder
+    {
+        return $collection === null
+            ? $query->whereNull('collection')
+            : $query->where('collection', $collection);
     }
 
     /**

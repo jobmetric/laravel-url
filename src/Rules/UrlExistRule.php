@@ -20,6 +20,13 @@ class UrlExistRule implements Rule
     private string $class_name;
 
     /**
+     * The media collection name, if applicable (not used in current logic).
+     *
+     * @var string|null
+     */
+    private ?string $collection;
+
+    /**
      * The ID of the current model instance to exclude (useful in updates).
      *
      * @var int|null
@@ -28,11 +35,13 @@ class UrlExistRule implements Rule
 
     /**
      * @param string $class_name Related model class (urlable_type)
+     * @param string|null $collection Optional media collection name, if applicable
      * @param int|null $object_id Optional model ID to exclude
      */
-    public function __construct(string $class_name, ?int $object_id = null)
+    public function __construct(string $class_name, ?string $collection = null, ?int $object_id = null)
     {
         $this->class_name = $class_name;
+        $this->collection = $collection;
         $this->object_id = $object_id;
     }
 
@@ -59,6 +68,12 @@ class UrlExistRule implements Rule
             ->when($this->object_id, function (Builder $q) {
                 $q->where('urlable_id', '!=', $this->object_id);
             });
+
+        if (is_null($this->collection)) {
+            $query->whereNull('collection');
+        } else {
+            $query->where('collection', $this->collection);
+        }
 
         return !$query->exists();
     }

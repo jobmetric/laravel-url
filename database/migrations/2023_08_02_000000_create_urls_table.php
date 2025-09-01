@@ -27,7 +27,7 @@ return new class extends Migration {
             $urlLength = $isMySql ? min((int)config('url.url_long'), 191) : (int)config('url.url_long');
 
             // Create the url column
-            $urlColumn = $table->string('url', $urlLength);
+            $urlColumn = $table->string('url', $urlLength)->index();
 
             // Apply case-sensitive collation per driver where applicable
             if ($isMySql) {
@@ -38,16 +38,14 @@ return new class extends Migration {
                 // Ensure this collation exists on your server or adjust as needed.
                 $urlColumn->collation('SQL_Latin1_General_CP1_CS_AS');
             }
-            // On PostgreSQL, column collation here is typically ignored; default is case-sensitive.
 
-            // Reverse lookup by URL can benefit from an index
-            $table->index('url', 'url_lookup_idx');
+            $table->string('collection')->nullable()->index();
 
             $table->timestamps();
 
             // Enforce per-record uniqueness of a given URL
             $table->unique(
-                ['urlable_type', 'urlable_id', 'url'],
+                ['urlable_type', 'urlable_id', 'url', 'collection'],
                 'URL_UNIQUE'
             );
         });

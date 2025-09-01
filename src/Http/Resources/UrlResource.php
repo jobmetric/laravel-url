@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
  * @property string $urlable_type
  * @property int $urlable_id
  * @property string $url
+ * @property string|null $collection
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property mixed $urlable_resource
@@ -34,6 +35,7 @@ class UrlResource extends JsonResource
             'urlable_type' => $this->urlable_type,
             'urlable_id' => $this->urlable_id,
             'url' => $this->url,
+            'collection' => $this->collection,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
 
