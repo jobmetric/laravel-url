@@ -2,7 +2,7 @@
 
 namespace JobMetric\Url\Http\Requests;
 
-use JobMetric\Url\Rules\UrlCollectionExistRule;
+use JobMetric\Url\Rules\UrlExistRule;
 
 trait UrlTypeObjectRequest
 {
@@ -19,7 +19,7 @@ trait UrlTypeObjectRequest
                 'string',
                 'nullable',
                 'sometimes',
-                new UrlCollectionExistRule($class_name, $collection, $object_id),
+                new UrlExistRule($class_name, $collection, $object_id),
             ];
         }
     }

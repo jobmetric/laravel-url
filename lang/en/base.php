@@ -13,7 +13,7 @@ return [
     */
 
     "rule" => [
-        "exist" => "Url :field already exists.",
+        "exist" => "Url already exists.",
     ],
 
     "validation" => [
