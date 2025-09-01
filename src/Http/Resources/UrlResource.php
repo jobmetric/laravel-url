@@ -11,7 +11,6 @@ use Illuminate\Support\Carbon;
  *
  * Transforms the Url model into a structured JSON resource.
  *
- * @property int $id
  * @property string $urlable_type
  * @property int $urlable_id
  * @property string $url
@@ -31,7 +30,6 @@ class UrlResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id' => $this->id,
             'urlable_type' => $this->urlable_type,
             'urlable_id' => $this->urlable_id,
             'url' => $this->url,
