@@ -11,6 +11,7 @@ return [
     */
 
     "tables" => [
+        'slug' => 'slugs',
         'url' => 'urls',
     ],
 
