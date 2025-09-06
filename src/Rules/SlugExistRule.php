@@ -4,16 +4,16 @@ namespace JobMetric\Url\Rules;
 
 use Illuminate\Contracts\Validation\Rule;
 use Illuminate\Database\Eloquent\Builder;
-use JobMetric\Url\Models\Url;
+use JobMetric\Url\Models\Slug;
 
 /**
- * Validation rule to ensure a URL (slug) is unique per model type,
+ * Validation rule to ensure a slug is unique per model type,
  * excluding an optional current record (for update flows).
  */
-class UrlExistRule implements Rule
+class SlugExistRule implements Rule
 {
     /**
-     * The fully-qualified class name of the related model (urlable type).
+     * The fully-qualified class name of the related model (slugable type).
      *
      * @var string
      */
@@ -34,7 +34,7 @@ class UrlExistRule implements Rule
     private ?int $object_id;
 
     /**
-     * @param string $class_name Related model class (urlable_type)
+     * @param string $class_name Related model class (slugable_type)
      * @param string|null $collection Optional media collection name, if applicable
      * @param int|null $object_id Optional model ID to exclude
      */
@@ -62,11 +62,11 @@ class UrlExistRule implements Rule
         $slug = is_string($value) ? trim($value) : (string)$value;
 
         /** @var Builder $query */
-        $query = Url::query()
-            ->where('urlable_type', $this->class_name)
-            ->where('url', $slug)
+        $query = Slug::query()
+            ->where('slugable_type', $this->class_name)
+            ->where('slug', $slug)
             ->when($this->object_id, function (Builder $q) {
-                $q->where('urlable_id', '!=', $this->object_id);
+                $q->where('slugable_id', '!=', $this->object_id);
             });
 
         if (is_null($this->collection)) {
