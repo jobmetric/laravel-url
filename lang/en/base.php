@@ -31,6 +31,7 @@ return [
     "exceptions" => [
         "not_found" => "Url not found",
         "url_too_long" => "The url is too long.",
+        "model_url_contract_not_found" => "The :model model must implement the JobMetric\Url\Contracts\UrlContract contract.",
     ],
 
 ];

@@ -31,6 +31,7 @@ return [
     "exceptions" => [
         "not_found" => "آدرس اینترنتی یافت نشد",
         "url_too_long" => "آدرس اینترنتی بیش از حد طولانی است.",
+        "model_url_contract_not_found" => "مدل :model باید قرارداد JobMetric\Url\Contracts\UrlContract را پیاده سازی کند.",
     ],
 
 ];
