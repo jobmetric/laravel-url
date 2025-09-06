@@ -4,7 +4,6 @@ namespace JobMetric\Url\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
 use JobMetric\Url\Models\Url;
 
 /**
@@ -34,15 +33,12 @@ class UrlFactory extends Factory
      */
     public function definition(): array
     {
-        // Generate a slug and keep it within MySQL-safe length.
-        $max = (int)config('url.url_long', 191);
-        $slug = $this->faker->unique()->slug();
-
         return [
             'urlable_type' => null,
             'urlable_id' => null,
-            'url' => Str::limit($slug, $max, ''), // keep within length cap
+            'full_url' => null,
             'collection' => null,
+            'version' => 1,
         ];
     }
 
@@ -78,20 +74,16 @@ class UrlFactory extends Factory
     }
 
     /**
-     * Set a custom URL (slug). The value will be trimmed and length-limited.
+     * Set the full URL. The value will be trimmed.
      *
-     * @param string $url
+     * @param string $full_url
      *
      * @return static
      */
-    public function setUrl(string $url): static
+    public function setUrl(string $full_url): static
     {
-        $max = (int)config('url.url_long', 191);
-        $normalized = trim($url);
-        $normalized = Str::limit($normalized, $max, '');
-
         return $this->state(fn(array $attributes) => [
-            'url' => $normalized,
+            'full_url' => $full_url,
         ]);
     }
 
@@ -106,6 +98,20 @@ class UrlFactory extends Factory
     {
         return $this->state(fn(array $attributes) => [
             'collection' => $collection !== null ? trim($collection) : null,
+        ]);
+    }
+
+    /**
+     * Set the version number.
+     *
+     * @param int $version
+     *
+     * @return static
+     */
+    public function setVersion(int $version): static
+    {
+        return $this->state(fn(array $attributes) => [
+            'version' => $version,
         ]);
     }
 }
