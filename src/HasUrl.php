@@ -7,25 +7,27 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
-use JobMetric\Url\Exceptions\UrlNotFoundException;
-use JobMetric\Url\Http\Resources\UrlResource;
-use JobMetric\Url\Models\Url;
+use JobMetric\Url\Contracts\UrlContract;
+use JobMetric\Url\Exceptions\ModelUrlContractNotFoundException;
+use JobMetric\Url\Exceptions\SlugNotFoundException;
+use JobMetric\Url\Http\Resources\SlugResource;
+use JobMetric\Url\Models\Slug;
 use Throwable;
 
 /**
  * Trait HasUrl
  *
- * Provides a single URL (slug) for an Eloquent model using a polymorphic one-to-one relation.
- * The trait captures incoming "slug" and optional "url_collection" (or falls back to the model's "type")
- * during saving, normalizes them, and persists to the Url table after the model is saved.
+ * Provides a single slug for an Eloquent model using a polymorphic one-to-one relation.
+ * The trait captures incoming "slug" and optional "slug_collection" (or falls back to the model's "type")
+ * during saving, normalizes them, and persists to the Slug table after the model is saved.
  *
  * Database invariants (recommended):
- * - Add a unique index on (urlable_type, urlable_id) to enforce one Url row per record.
- * - Add a unique index on (urlable_type, collection, url) to enforce uniqueness of slugs within a type+collection scope.
+ * - Add a unique index on (slugable_type, slugable_id) to enforce one Slug row per record.
+ * - Add a unique index on (slugable_type, collection, slug) to enforce uniqueness of slugs within a type+collection scope.
  *
- * @property-read string|null $url Exposes the resolved slug of the current model (from the default collection).
- * @property-read UrlResource|null $url_resource Exposes the Url resource wrapper for the current model.
- * @property-read string|null $url_collection Exposes the resolved collection for the current model (if any).
+ * @property-read string|null $slug Exposes the resolved slug of the current model (from the default collection).
+ * @property-read SlugResource|null $slug_resource Exposes the Slug resource wrapper for the current model.
+ * @property-read string|null $slug_collection Exposes the resolved collection for the current model (if any).
  */
 trait HasUrl
 {
@@ -35,127 +37,131 @@ trait HasUrl
      *
      * @var array{slug: string|null, collection: string|null}
      */
-    private array $innerUrl = ['slug' => null, 'collection' => null];
+    private array $innerSlug = ['slug' => null, 'collection' => null];
 
     /**
      * Initializes fillable attributes for URL handling.
-     * Role: Make "slug" and "url_collection" mass-assignable for convenient input binding.
+     * Role: Make "slug" and "slug_collection" mass-assignable for convenient input binding.
      *
      * @return void
      */
     public function initializeHasUrl(): void
     {
-        $this->mergeFillable(['slug', 'url_collection']);
+        $this->mergeFillable(['slug', 'slug_collection']);
     }
 
     /**
      * Boots the URL lifecycle hooks.
-     * Role: Capture incoming slug/collection before save, persist Url after save, and manage deletion behavior.
+     * Role: Capture incoming slug/collection before save, persist Slug after save, and manage deletion behavior.
      *
      * @return void
+     * @throws Throwable
      */
     public static function bootHasUrl(): void
     {
+        if (!in_array(UrlContract::class, class_implements(self::class))) {
+            throw new ModelUrlContractNotFoundException(self::class);
+        }
+
         static::saving(function (Model $model) {
-            $incomingSlug = $model->attributes['slug'] ?? $model->attributes['url'] ?? null;
-            $incomingCollection = $model->attributes['url_collection'] ?? $model->attributes['type'] ?? null;
+            $incomingSlug = $model->attributes['slug'] ?? null;
+            $incomingCollection = $model->attributes['slug_collection'] ?? $model->attributes['type'] ?? null;
 
             if ($incomingSlug !== null || $incomingCollection !== null) {
-                [$slug, $collection] = $model->normalizeUrlPair($incomingSlug, $incomingCollection);
-                $collection = $model->resolveUrlCollection($collection);
+                [$slug, $collection] = $model->normalizeSlugPair($incomingSlug, $incomingCollection);
+                $collection = $model->resolveSlugCollection($collection);
 
-                $model->innerUrl = [
+                $model->innerSlug = [
                     'slug' => $slug,
                     'collection' => $collection,
                 ];
 
                 unset(
                     $model->attributes['slug'],
-                    $model->attributes['url'],
-                    $model->attributes['url_collection']
+                    $model->attributes['slug_collection']
                 );
             }
         });
 
         static::saved(function (Model $model) {
-            if (!empty($model->innerUrl['slug']) || $model->innerUrl['collection'] !== null) {
-                $model->persistUrlPair($model->innerUrl['slug'], $model->innerUrl['collection']);
-                $model->innerUrl = ['slug' => null, 'collection' => null];
+            if (!empty($model->innerSlug['slug']) || $model->innerSlug['collection'] !== null) {
+                $model->persistSlugPair($model->innerSlug['slug'], $model->innerSlug['collection']);
+                $model->innerSlug = ['slug' => null, 'collection' => null];
             }
         });
 
         static::deleted(function (Model $model) {
             if (!in_array(SoftDeletes::class, class_uses_recursive($model), true)) {
-                $model->urlRecord()->delete();
+                $model->slugRecord()->delete();
             }
         });
 
         if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
             static::forceDeleted(function (Model $model) {
-                $model->urlRecord()->delete();
+                $model->slugRecord()->delete();
             });
         }
     }
 
     /**
      * Returns the polymorphic one-to-one URL relation.
-     * Role: Provide direct access to the underlying Url row associated with this model.
+     * Role: Provide direct access to the underlying Slug row associated with this model.
      *
      * @return MorphOne
      */
-    public function urlRecord(): MorphOne
+    public function slugRecord(): MorphOne
     {
-        return $this->morphOne(Url::class, 'urlable');
+        return $this->morphOne(Slug::class, 'slugable');
     }
 
     /**
      * Resolves the default URL resource envelope for this model.
-     * Role: Retrieve the Url row (for the resolved default collection) and wrap it in UrlResource.
+     * Role: Retrieve the Slug row (for the resolved default collection) and wrap it in SlugResource.
      *
-     * @return array{ok: bool, data?: UrlResource}
+     * @return array{ok: bool, data?: SlugResource}
      */
-    public function url(): array
+    public function slug(): array
     {
-        $record = $this->getUrlRecord(null);
+        $record = $this->getSlugRecord(null);
 
         return $record
-            ? $this->okEnvelope(new UrlResource($record))
+            ? $this->okEnvelope(new SlugResource($record))
             : $this->failEnvelope();
     }
 
     /**
      * Resolves the URL by a specific collection.
-     * Role: Fetch the Url row filtered by collection; optionally return only the slug string.
+     * Role: Fetch the Slug row filtered by collection; optionally return only the slug string.
      *
      * @param string|null $collection Target collection to resolve; null uses the default resolution.
      * @param bool $mode When true, returns only the slug string; otherwise returns an envelope.
      *
      * @return array|string|null
      */
-    public function urlByCollection(?string $collection = null, bool $mode = false): array|string|null
+    public function slugByCollection(?string $collection = null, bool $mode = false): array|string|null
     {
-        $record = $this->getUrlRecord($collection);
+        $record = $this->getSlugRecord($collection);
 
         if ($mode) {
-            return $record?->url;
+            return $record?->slug;
         }
 
         return $record
-            ? $this->okEnvelope(new UrlResource($record))
+            ? $this->okEnvelope(new SlugResource($record))
             : $this->failEnvelope();
     }
 
     /**
      * Accessor for the slug string of the current model.
-     * Role: Expose the Url slug via attribute access, pulling from the default collection.
+     * Role: Expose the Slug slug via attribute access, pulling from the default collection.
      *
      * @return string|null
      */
-    public function getUrlAttribute(): ?string
+    public function getSlugAttribute(): ?string
     {
-        $env = $this->url();
+        $env = $this->slug();
 
-        return ($env['ok'] ?? false) ? $env['data']->url : null;
+        return ($env['ok'] ?? false) ? $env['data']->slug : null;
     }
 
     /**
@@ -164,20 +170,20 @@ trait HasUrl
      *
      * @return string|null
      */
-    public function getUrl(): ?string
+    public function getSlug(): ?string
     {
-        return $this->url;
+        return $this->slug;
     }
 
     /**
-     * Accessor for the Url resource of the current model.
-     * Role: Expose the UrlResource via attribute access for the default collection.
+     * Accessor for the Slug resource of the current model.
+     * Role: Expose the SlugResource via attribute access for the default collection.
      *
-     * @return UrlResource|null
+     * @return SlugResource|null
      */
-    public function getUrlResourceAttribute(): ?UrlResource
+    public function getSlugResourceAttribute(): ?SlugResource
     {
-        $env = $this->url();
+        $env = $this->slug();
 
         return ($env['ok'] ?? false) ? $env['data'] : null;
     }
@@ -188,9 +194,9 @@ trait HasUrl
      *
      * @return string|null
      */
-    public function getUrlCollectionAttribute(): ?string
+    public function getSlugCollectionAttribute(): ?string
     {
-        $env = $this->url();
+        $env = $this->slug();
         $res = ($env['ok'] ?? false) ? $env['data'] : null;
 
         return $res?->collection;
@@ -198,127 +204,127 @@ trait HasUrl
 
     /**
      * Finds a model by slug for this model type across all collections.
-     * Role: Resolve the Url row by (type, url) and return the related model instance.
+     * Role: Resolve the Slug row by (type, slug) and return the related model instance.
      *
-     * @param string $url The slug string to match.
+     * @param string $slug The slug string to match.
      *
      * @return Model|null
      */
-    public static function findByUrl(string $url): ?Model
+    public static function findBySlug(string $slug): ?Model
     {
         $type = (new static())->getMorphClass();
 
-        $row = Url::query()
-            ->where('urlable_type', $type)
-            ->where('url', $url)
+        $row = Slug::query()
+            ->where('slugable_type', $type)
+            ->where('slug', $slug)
             ->first();
 
-        return $row?->urlable;
+        return $row?->slugable;
     }
 
     /**
-     * Finds a model by slug or throws UrlNotFoundException.
+     * Finds a model by slug or throws SlugNotFoundException.
      * Role: Enforce a fail-fast lookup when a slug must resolve to a model instance.
      *
-     * @param string $url The slug string to match.
+     * @param string $slug The slug string to match.
      *
      * @return Model|null
      *
      * @throws Throwable
      */
-    public static function findByUrlOrFail(string $url): ?Model
+    public static function findBySlugOrFail(string $slug): ?Model
     {
-        $model = static::findByUrl($url);
+        $model = static::findBySlug($slug);
 
         if ($model) {
             return $model;
         }
 
-        throw new UrlNotFoundException;
+        throw new SlugNotFoundException;
     }
 
     /**
      * Finds a model by slug within a specific collection for this type.
-     * Role: Resolve the Url row by (type, collection?, url) and return the related model.
+     * Role: Resolve the Slug row by (type, collection?, slug) and return the related model.
      *
-     * @param string $url The slug string to match.
+     * @param string $slug The slug string to match.
      * @param string|null $collection The collection scope; null will match rows with NULL collection.
      *
      * @return Model|null
      */
-    public static function findByUrlAndCollection(string $url, ?string $collection = null): ?Model
+    public static function findBySlugAndCollection(string $slug, ?string $collection = null): ?Model
     {
         $type = (new static())->getMorphClass();
 
-        $row = Url::query()
-            ->where('urlable_type', $type)
+        $row = Slug::query()
+            ->where('slugable_type', $type)
             ->when(
                 $collection === null,
                 fn (Builder $q) => $q->whereNull('collection'),
                 fn (Builder $q) => $q->where('collection', $collection)
             )
-            ->where('url', $url)
+            ->where('slug', $slug)
             ->first();
 
-        return $row?->urlable;
+        return $row?->slugable;
     }
 
     /**
-     * Finds a model by slug and collection or throws UrlNotFoundException.
+     * Finds a model by slug and collection or throws SlugNotFoundException.
      * Role: Enforce a fail-fast lookup scoped by collection when resolution is mandatory.
      *
-     * @param string $url The slug string to match.
+     * @param string $slug The slug string to match.
      * @param string|null $collection The collection scope; null will match rows with NULL collection.
      *
      * @return Model|null
      *
      * @throws Throwable
      */
-    public static function findByUrlAndCollectionOrFail(string $url, ?string $collection = null): ?Model
+    public static function findBySlugAndCollectionOrFail(string $slug, ?string $collection = null): ?Model
     {
-        $model = static::findByUrlAndCollection($url, $collection);
+        $model = static::findBySlugAndCollection($slug, $collection);
 
         if ($model) {
             return $model;
         }
 
-        throw new UrlNotFoundException;
+        throw new SlugNotFoundException;
     }
 
     /**
      * Dispatches a new/updated URL for this model.
-     * Role: Normalize, resolve collection, upsert into Url storage, and return a resource envelope.
+     * Role: Normalize, resolve collection, upsert into Slug storage, and return a resource envelope.
      *
-     * @param string|null $url The candidate slug to persist.
+     * @param string|null $slug The candidate slug to persist.
      * @param string|null $collection Optional collection scope to persist with the slug.
      *
-     * @return array{ok: bool, data?: UrlResource}
+     * @return array{ok: bool, data?: SlugResource}
      */
-    public function dispatchUrl(?string $url, ?string $collection = null): array
+    public function dispatchSlug(?string $slug, ?string $collection = null): array
     {
-        [$slug, $collection] = $this->normalizeUrlPair($url, $collection);
-        $collection = $this->resolveUrlCollection($collection);
+        [$slug, $collection] = $this->normalizeSlugPair($slug, $collection);
+        $collection = $this->resolveSlugCollection($collection);
 
-        $this->persistUrlPair($slug, $collection);
+        $this->persistSlugPair($slug, $collection);
 
-        $record = $this->getUrlRecord($collection);
+        $record = $this->getSlugRecord($collection);
 
         return $record
-            ? $this->okEnvelope(new UrlResource($record))
+            ? $this->okEnvelope(new SlugResource($record))
             : $this->failEnvelope();
     }
 
     /**
      * Forgets the URL of this model (optionally verifying collection).
-     * Role: Delete the single Url row if it exists and matches the provided collection (when given).
+     * Role: Delete the single Slug row if it exists and matches the provided collection (when given).
      *
      * @param string|null $collection Optional collection to check against before deletion.
      *
      * @return array{ok: bool}
      */
-    public function forgetUrl(?string $collection = null): array
+    public function forgetSlug(?string $collection = null): array
     {
-        $record = $this->urlRecord()->first();
+        $record = $this->slugRecord()->first();
 
         if ($record && ($collection === null || $record->collection === $collection)) {
             $record->delete();
@@ -336,33 +342,31 @@ trait HasUrl
      *
      * @return array{0: string|null, 1: string|null}
      */
-    protected function normalizeUrlPair(?string $slug, ?string $collection): array
+    protected function normalizeSlugPair(?string $slug, ?string $collection): array
     {
-        $max = (int) config('url.url_long', 191);
-
         $normalizedSlug = $slug === null
             ? null
-            : Str::limit(Str::slug(trim((string) $slug)), $max, '');
+            : Str::limit(Str::slug(trim((string) $slug)), 100, '');
 
         return [$normalizedSlug, $collection === null ? null : trim((string) $collection)];
     }
 
     /**
      * Resolves the collection to use when not explicitly provided.
-     * Role: Prefer explicit collection; otherwise use getUrlCollectionDefault() or the model's "type".
+     * Role: Prefer explicit collection; otherwise use getSlugCollectionDefault() or the model's "type".
      *
      * @param string|null $collection Candidate collection to resolve.
      *
      * @return string|null
      */
-    protected function resolveUrlCollection(?string $collection): ?string
+    protected function resolveSlugCollection(?string $collection): ?string
     {
         if ($collection !== null && $collection !== '') {
             return $collection;
         }
 
-        if (method_exists($this, 'getUrlCollectionDefault')) {
-            return $this->getUrlCollectionDefault();
+        if (method_exists($this, 'getSlugCollectionDefault')) {
+            return $this->getSlugCollectionDefault();
         }
 
         if (isset($this->attributes['type'])) {
@@ -373,45 +377,45 @@ trait HasUrl
     }
 
     /**
-     * Persists the (slug, collection) pair into Url storage for this model.
-     * Role: Upsert the Url row using the (urlable_type, urlable_id) tuple to keep exactly one record.
+     * Persists the (slug, collection) pair into Slug storage for this model.
+     * Role: Upsert the Slug row using the (slugable_type, slugable_id) tuple to keep exactly one record.
      *
      * @param string|null $slug Normalized slug to persist (nullable).
      * @param string|null $collection Resolved collection to persist (nullable).
      *
      * @return void
      */
-    protected function persistUrlPair(?string $slug, ?string $collection): void
+    protected function persistSlugPair(?string $slug, ?string $collection): void
     {
         /** @var Model $this */
         if ($slug === null && $collection === null) {
             return;
         }
 
-        Url::query()->updateOrCreate(
+        Slug::query()->updateOrCreate(
             [
-                'urlable_type' => $this->getMorphClass(),
-                'urlable_id' => $this->getKey(),
+                'slugable_type' => $this->getMorphClass(),
+                'slugable_id' => $this->getKey(),
             ],
             [
-                'url' => $slug,
+                'slug' => $slug,
                 'collection' => $collection,
             ]
         );
     }
 
     /**
-     * Fetches the Url record for this model, optionally verifying collection equality.
-     * Role: Retrieve the single Url row and filter by collection when provided.
+     * Fetches the Slug record for this model, optionally verifying collection equality.
+     * Role: Retrieve the single Slug row and filter by collection when provided.
      *
      * @param string|null $collection Target collection to match; null returns the single row as-is.
      *
-     * @return Url|null
+     * @return Slug|null
      */
-    protected function getUrlRecord(?string $collection): ?Url
+    protected function getSlugRecord(?string $collection): ?Slug
     {
         /** @var Model $this */
-        $record = $this->urlRecord()->first();
+        $record = $this->slugRecord()->first();
 
         if ($collection === null) {
             return $record;
