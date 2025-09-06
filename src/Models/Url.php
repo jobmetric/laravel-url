@@ -23,8 +23,10 @@ use JobMetric\Url\Events\UrlableResourceEvent;
  * @property int $id The primary identifier of the URL row.
  * @property string $urlable_type The class name of the related model.
  * @property int $urlable_id The ID of the related model instance.
- * @property string $url The unique URL (slug) value for the model instance.
+ * @property string $full_url The full URL string (up to 2000 characters).
  * @property string|null $collection An optional collection name to group URLs.
+ * @property integer $version The version number of the URL for the given urlable.
+ * @property Carbon|null $deleted_at The timestamp when this URL was soft-deleted.
  * @property Carbon $created_at The timestamp when this URL was created.
  * @property Carbon $updated_at The timestamp when this URL was last updated.
  *
@@ -33,11 +35,11 @@ use JobMetric\Url\Events\UrlableResourceEvent;
  *
  * @method static Builder|Url whereUrlableType(string $urlable_type)
  * @method static Builder|Url whereUrlableId(int $urlable_id)
- * @method static Builder|Url whereUrl(string $url)
+ * @method static Builder|Url whereFullUrl(string $full_url)
+ * @method static Builder|Url whereCollection(string|null $collection)
+ * @method static Builder|Url whereVersion(int $version)
  *
  * @method static Builder|Url ofUrlable(string $urlable_type, int $urlable_id)
- * @method static Builder|Url ofUrl(string $url)
- * @method static Builder|Url ofCollection(string|null $collection = null)
  */
 class Url extends Model
 {
@@ -51,7 +53,7 @@ class Url extends Model
     protected $fillable = [
         'urlable_type',
         'urlable_id',
-        'url',
+        'full_url',
         'collection',
     ];
 
@@ -63,7 +65,7 @@ class Url extends Model
     protected $casts = [
         'urlable_type' => 'string',
         'urlable_id' => 'integer',
-        'url' => 'string',
+        'full_url' => 'string',
         'collection' => 'string',
     ];
 
@@ -102,34 +104,6 @@ class Url extends Model
             'urlable_type' => $urlable_type,
             'urlable_id' => $urlable_id
         ]);
-    }
-
-    /**
-     * Scope a query to only include a specific URL value.
-     *
-     * @param Builder $query
-     * @param string $url
-     *
-     * @return Builder
-     */
-    public function scopeOfUrl(Builder $query, string $url): Builder
-    {
-        return $query->where('url', $url);
-    }
-
-    /**
-     * Scope a query to only include URLs in a specific collection.
-     *
-     * @param Builder $query
-     * @param string|null $collection
-     *
-     * @return Builder
-     */
-    public function scopeOfCollection(Builder $query, ?string $collection = null): Builder
-    {
-        return $collection === null
-            ? $query->whereNull('collection')
-            : $query->where('collection', $collection);
     }
 
     /**
