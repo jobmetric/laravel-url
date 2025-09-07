@@ -55,6 +55,7 @@ class Url extends Model
         'urlable_id',
         'full_url',
         'collection',
+        'version'
     ];
 
     /**
@@ -67,6 +68,7 @@ class Url extends Model
         'urlable_id' => 'integer',
         'full_url' => 'string',
         'collection' => 'string',
+        'version' => 'integer',
     ];
 
     /**
