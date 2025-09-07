@@ -6,42 +6,87 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use JobMetric\Url\Contracts\UrlContract;
+use JobMetric\Url\Events\UrlChanged;
 use JobMetric\Url\Exceptions\ModelUrlContractNotFoundException;
+use JobMetric\Url\Exceptions\SlugConflictException;
 use JobMetric\Url\Exceptions\SlugNotFoundException;
+use JobMetric\Url\Exceptions\UrlConflictException;
 use JobMetric\Url\Http\Resources\SlugResource;
 use JobMetric\Url\Models\Slug;
+use JobMetric\Url\Models\Url;
 use Throwable;
 
 /**
  * Trait HasUrl
  *
- * Provides a single slug for an Eloquent model using a polymorphic one-to-one relation.
- * The trait captures incoming "slug" and optional "slug_collection" (or falls back to the model's "type")
- * during saving, normalizes them, and persists to the Slug table after the model is saved.
+ * Provides a single slug for an Eloquent model using a polymorphic one-to-one relation,
+ * and a versioned full URL history stored in the `urls` table. The trait captures incoming
+ * "slug" and optional "slug_collection" (or falls back to the model's "type") during saving,
+ * normalizes them, and persists to the Slug table after the model is saved.
+ *
+ * URL handling:
+ * - On every save, builds current full URL via UrlContract::getFullUrl().
+ * - If it's the first URL, a new Url row is created with version = 1 (active).
+ * - If full URL changed, previous active Url row is soft-deleted and a new row is created with version = prev+1.
+ * - Active URLs must be unique globally; soft-deleted duplicates with the same full_url are removed
+ *   permanently right before inserting the new active URL, inside a DB transaction.
+ * - If an active URL conflict exists for another model, a UrlConflictException is thrown.
+ *
+ * Cascade:
+ * - If parent path components change (e.g., category slug), the model may implement:
+ *     getUrlDescendants(): iterable<Model>
+ *   to return children needing URL refresh. Each descendant MUST implement UrlContract.
+ *   The trait will resync their versioned URLs atomically without exposing public methods.
+ *
+ * Deletion:
+ * - On soft delete, the Slug row and all Url rows are soft-deleted.
+ * - On restore, conflicts are checked; then the Slug row is restored and the active URL is resynced.
+ * - On force delete, the Slug row and all Url rows are permanently deleted.
  *
  * Database invariants (recommended):
- * - Add a unique index on (slugable_type, slugable_id) to enforce one Slug row per record.
- * - Add a unique index on (slugable_type, collection, slug) to enforce uniqueness of slugs within a type+collection scope.
+ * - Slug table: unique index on (slugable_type, slugable_id, deleted_at) and, optionally, on (slugable_type, collection, slug, deleted_at).
+ * - Url table: unique (urlable_type, urlable_id, version). Active URL global uniqueness is enforced at application level.
  *
- * @property-read string|null $slug Exposes the resolved slug of the current model (from the default collection).
- * @property-read SlugResource|null $slug_resource Exposes the Slug resource wrapper for the current model.
- * @property-read string|null $slug_collection Exposes the resolved collection for the current model (if any).
+ * @property-read string|null $slug
+ * @property-read SlugResource|null $slug_resource
+ * @property-read string|null $slug_collection
  */
 trait HasUrl
 {
     /**
-     * Holds a pending URL payload extracted from attributes during the saving event.
-     * Role: Temporarily buffers normalized slug/collection so they can be persisted after the model is saved.
+     * Temporarily holds normalized slug/collection so they can be persisted after the model is saved.
      *
      * @var array{slug: string|null, collection: string|null}
      */
     private array $innerSlug = ['slug' => null, 'collection' => null];
 
     /**
-     * Initializes fillable attributes for URL handling.
-     * Role: Make "slug" and "slug_collection" mass-assignable for convenient input binding.
+     * Caches the model's full URL prior to saving for change detection.
+     *
+     * @var string|null
+     */
+    private ?string $preSaveFullUrl = null;
+
+    /**
+     * Indicates whether the slug value explicitly changed in this save cycle.
+     *
+     * @var bool
+     */
+    private bool $slugChanged = false;
+
+    /**
+     * Allows temporarily disabling descendant cascade (use withoutUrlCascade()).
+     *
+     * @var bool
+     */
+    protected bool $disableUrlCascade = false;
+
+    /**
+     * Make "slug" and "slug_collection" mass-assignable for convenient input binding.
      *
      * @return void
      */
@@ -51,8 +96,8 @@ trait HasUrl
     }
 
     /**
-     * Boots the URL lifecycle hooks.
-     * Role: Capture incoming slug/collection before save, persist Slug after save, and manage deletion behavior.
+     * Capture incoming slug/collection before save, persist Slug after save,
+     * handle versioned full URL, and manage delete/restore/force-delete flows.
      *
      * @return void
      * @throws Throwable
@@ -64,6 +109,17 @@ trait HasUrl
         }
 
         static::saving(function (Model $model) {
+            // Cache current full URL (if computable) to detect path changes
+            if (method_exists($model, 'getFullUrl')) {
+                try {
+                    /** @var UrlContract $model */
+                    $model->preSaveFullUrl = (string) $model->getFullUrl();
+                } catch (Throwable) {
+                    $model->preSaveFullUrl = null;
+                }
+            }
+
+            // Capture incoming slug and optional collection
             $incomingSlug = $model->attributes['slug'] ?? null;
             $incomingCollection = $model->attributes['slug_collection'] ?? $model->attributes['type'] ?? null;
 
@@ -71,52 +127,132 @@ trait HasUrl
                 [$slug, $collection] = $model->normalizeSlugPair($incomingSlug, $incomingCollection);
                 $collection = $model->resolveSlugCollection($collection);
 
+                // Detect explicit slug or collection change compared to current stored record (if any)
+                $currentRecord = $model->slugRecord()->withTrashed()->first();
+                $model->slugChanged = $currentRecord
+                    ? ((string) $currentRecord->slug !== (string) ($slug ?? $currentRecord->slug) ||
+                        (string) $currentRecord->collection !== (string) $collection)
+                    : ($slug !== null || $collection !== null);
+
                 $model->innerSlug = [
                     'slug' => $slug,
                     'collection' => $collection,
                 ];
 
-                unset(
-                    $model->attributes['slug'],
-                    $model->attributes['slug_collection']
-                );
+                unset($model->attributes['slug'], $model->attributes['slug_collection']);
+            } else {
+                $model->slugChanged = false;
             }
         });
 
         static::saved(function (Model $model) {
+            // If slug/collection going to change, ensure no active slug conflict BEFORE upsert
             if (!empty($model->innerSlug['slug']) || $model->innerSlug['collection'] !== null) {
+                if ($model->slugChanged) {
+                    $model->ensureNoActiveSlugConflict($model->innerSlug['collection'], $model->innerSlug['slug']);
+                }
+
                 $model->persistSlugPair($model->innerSlug['slug'], $model->innerSlug['collection']);
                 $model->innerSlug = ['slug' => null, 'collection' => null];
             }
-        });
 
-        static::deleted(function (Model $model) {
-            if (!in_array(SoftDeletes::class, class_uses_recursive($model), true)) {
-                $model->slugRecord()->delete();
+            // Execute URL sync & cascade AFTER COMMIT to avoid partial states
+            $after = function () use ($model) {
+                $model->syncVersionedUrl();
+
+                if ($model->slugChanged && !$model->disableUrlCascade) {
+                    $model->refreshDescendantUrls();
+                }
+
+                $model->slugChanged = false;
+                $model->preSaveFullUrl = null;
+            };
+
+            if (method_exists(DB::class, 'afterCommit')) {
+                DB::afterCommit($after);
+            } else {
+                $after();
             }
         });
 
+        // Soft delete / Hard delete handler
+        static::deleted(function (Model $model) {
+            $usesSoftDeletes = in_array(SoftDeletes::class, class_uses_recursive($model), true);
+            $isForce = $usesSoftDeletes && (isset($model->forceDeleting) && $model->forceDeleting === true);
+
+            if ($usesSoftDeletes && !$isForce) {
+                // Soft delete related slug and URLs
+                $model->deleteRelatedSlugAndUrls(false);
+                return;
+            }
+
+            // Non-soft models or hard delete path: remove everything permanently
+            $model->deleteRelatedSlugAndUrls(true);
+        });
+
+        // Force delete & restore flows for models using SoftDeletes
         if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
             static::forceDeleted(function (Model $model) {
-                $model->slugRecord()->delete();
+                $model->deleteRelatedSlugAndUrls(true);
+            });
+
+            // Before restoring: validate conflicts (slug & URL)
+            static::restoring(function (Model $model) {
+                $trashedSlug = Slug::query()
+                    ->ofSlugable($model->getMorphClass(), $model->getKey())
+                    ->withTrashed()
+                    ->first();
+
+                if ($trashedSlug) {
+                    $model->ensureNoActiveSlugConflict($trashedSlug->collection, $trashedSlug->slug);
+                }
+
+                /** @var UrlContract $model */
+                $newFullUrl = (string) $model->getFullUrl();
+                $model->ensureNoActiveFullUrlConflict($newFullUrl);
+            });
+
+            // After restoring: restore slug row and resync versioned URL (after commit)
+            static::restored(function (Model $model) {
+                $after = function () use ($model) {
+                    $model->restoreRelatedSlugIfAvailable();
+                    $model->syncVersionedUrl();
+                };
+
+                if (method_exists(DB::class, 'afterCommit')) {
+                    DB::afterCommit($after);
+                } else {
+                    $after();
+                }
             });
         }
     }
 
     /**
-     * Returns the polymorphic one-to-one URL relation.
-     * Role: Provide direct access to the underlying Slug row associated with this model.
+     * Polymorphic one-to-one Slug relation.
      *
      * @return MorphOne
      */
     public function slugRecord(): MorphOne
     {
-        return $this->morphOne(Slug::class, 'slugable');
+        return $this->morphOne(Slug::class, 'slugable')->withDefault();
     }
 
     /**
-     * Resolves the default URL resource envelope for this model.
-     * Role: Retrieve the Slug row (for the resolved default collection) and wrap it in SlugResource.
+     * Polymorphic one-to-one current Url relation (latest active by version).
+     *
+     * @return MorphOne
+     */
+    public function urlRecord(): MorphOne
+    {
+        return $this
+            ->morphOne(Url::class, 'urlable')
+            ->whereNull('deleted_at')
+            ->latestOfMany('version');
+    }
+
+    /**
+     * Retrieve the Slug row and wrap it in SlugResource.
      *
      * @return array{ok: bool, data?: SlugResource}
      */
@@ -125,16 +261,15 @@ trait HasUrl
         $record = $this->getSlugRecord(null);
 
         return $record
-            ? $this->okEnvelope(new SlugResource($record))
+            ? $this->okEnvelope(SlugResource::make($record))
             : $this->failEnvelope();
     }
 
     /**
-     * Resolves the URL by a specific collection.
-     * Role: Fetch the Slug row filtered by collection; optionally return only the slug string.
+     * Fetch the Slug row filtered by collection; optionally return only the slug string.
      *
-     * @param string|null $collection Target collection to resolve; null uses the default resolution.
-     * @param bool $mode When true, returns only the slug string; otherwise returns an envelope.
+     * @param string|null $collection
+     * @param bool $mode When true, returns only the slug string.
      *
      * @return array|string|null
      */
@@ -147,13 +282,12 @@ trait HasUrl
         }
 
         return $record
-            ? $this->okEnvelope(new SlugResource($record))
+            ? $this->okEnvelope(SlugResource::make($record))
             : $this->failEnvelope();
     }
 
     /**
-     * Accessor for the slug string of the current model.
-     * Role: Expose the Slug slug via attribute access, pulling from the default collection.
+     * Slug accessor using the default collection.
      *
      * @return string|null
      */
@@ -165,8 +299,7 @@ trait HasUrl
     }
 
     /**
-     * Convenience getter for the slug.
-     * Role: Provide a helper method to fetch the slug value identical to the accessor.
+     * Convenience getter for slug value.
      *
      * @return string|null
      */
@@ -176,8 +309,7 @@ trait HasUrl
     }
 
     /**
-     * Accessor for the Slug resource of the current model.
-     * Role: Expose the SlugResource via attribute access for the default collection.
+     * SlugResource accessor using the default collection.
      *
      * @return SlugResource|null
      */
@@ -189,8 +321,7 @@ trait HasUrl
     }
 
     /**
-     * Accessor for the resolved collection of the current model.
-     * Role: Expose the currently resolved collection (if any) via attribute access.
+     * Resolved collection accessor using the default collection.
      *
      * @return string|null
      */
@@ -203,11 +334,9 @@ trait HasUrl
     }
 
     /**
-     * Finds a model by slug for this model type across all collections.
-     * Role: Resolve the Slug row by (type, slug) and return the related model instance.
+     * Resolve by slug across all collections for this model type.
      *
-     * @param string $slug The slug string to match.
-     *
+     * @param string $slug
      * @return Model|null
      */
     public static function findBySlug(string $slug): ?Model
@@ -223,13 +352,10 @@ trait HasUrl
     }
 
     /**
-     * Finds a model by slug or throws SlugNotFoundException.
-     * Role: Enforce a fail-fast lookup when a slug must resolve to a model instance.
+     * Resolve by slug or throw.
      *
-     * @param string $slug The slug string to match.
-     *
+     * @param string $slug
      * @return Model|null
-     *
      * @throws Throwable
      */
     public static function findBySlugOrFail(string $slug): ?Model
@@ -244,12 +370,10 @@ trait HasUrl
     }
 
     /**
-     * Finds a model by slug within a specific collection for this type.
-     * Role: Resolve the Slug row by (type, collection?, slug) and return the related model.
+     * Resolve by slug and collection for this model type.
      *
-     * @param string $slug The slug string to match.
-     * @param string|null $collection The collection scope; null will match rows with NULL collection.
-     *
+     * @param string $slug
+     * @param string|null $collection
      * @return Model|null
      */
     public static function findBySlugAndCollection(string $slug, ?string $collection = null): ?Model
@@ -270,14 +394,11 @@ trait HasUrl
     }
 
     /**
-     * Finds a model by slug and collection or throws SlugNotFoundException.
-     * Role: Enforce a fail-fast lookup scoped by collection when resolution is mandatory.
+     * Resolve by slug and collection or throw.
      *
-     * @param string $slug The slug string to match.
-     * @param string|null $collection The collection scope; null will match rows with NULL collection.
-     *
+     * @param string $slug
+     * @param string|null $collection
      * @return Model|null
-     *
      * @throws Throwable
      */
     public static function findBySlugAndCollectionOrFail(string $slug, ?string $collection = null): ?Model
@@ -292,34 +413,37 @@ trait HasUrl
     }
 
     /**
-     * Dispatches a new/updated URL for this model.
-     * Role: Normalize, resolve collection, upsert into Slug storage, and return a resource envelope.
+     * Normalize, resolve collection, upsert into Slug storage, and return a resource envelope.
+     * Also syncs the versioned URL with the current full URL.
      *
-     * @param string|null $slug The candidate slug to persist.
-     * @param string|null $collection Optional collection scope to persist with the slug.
-     *
+     * @param string|null $slug
+     * @param string|null $collection
      * @return array{ok: bool, data?: SlugResource}
+     * @throws Throwable
      */
     public function dispatchSlug(?string $slug, ?string $collection = null): array
     {
         [$slug, $collection] = $this->normalizeSlugPair($slug, $collection);
         $collection = $this->resolveSlugCollection($collection);
 
+        // Check conflicts on-demand dispatch as well
+        $this->ensureNoActiveSlugConflict($collection, $slug);
+
         $this->persistSlugPair($slug, $collection);
+
+        $this->syncVersionedUrl();
 
         $record = $this->getSlugRecord($collection);
 
         return $record
-            ? $this->okEnvelope(new SlugResource($record))
+            ? $this->okEnvelope(SlugResource::make($record))
             : $this->failEnvelope();
     }
 
     /**
-     * Forgets the URL of this model (optionally verifying collection).
-     * Role: Delete the single Slug row if it exists and matches the provided collection (when given).
+     * Delete the single Slug row if exists and matches the provided collection (when given).
      *
-     * @param string|null $collection Optional collection to check against before deletion.
-     *
+     * @param string|null $collection
      * @return array{ok: bool}
      */
     public function forgetSlug(?string $collection = null): array
@@ -334,12 +458,10 @@ trait HasUrl
     }
 
     /**
-     * Normalizes a slug/collection pair prior to persistence.
-     * Role: Sanitize, slugify, and length-limit slug; trim collection.
+     * Sanitize, slugify, and length-limit slug; trim collection.
      *
-     * @param string|null $slug Candidate slug (may be raw input).
-     * @param string|null $collection Candidate collection (raw input).
-     *
+     * @param string|null $slug
+     * @param string|null $collection
      * @return array{0: string|null, 1: string|null}
      */
     protected function normalizeSlugPair(?string $slug, ?string $collection): array
@@ -352,11 +474,9 @@ trait HasUrl
     }
 
     /**
-     * Resolves the collection to use when not explicitly provided.
-     * Role: Prefer explicit collection; otherwise use getSlugCollectionDefault() or the model's "type".
+     * Prefer explicit collection; otherwise use getSlugCollectionDefault() or the model's "type".
      *
-     * @param string|null $collection Candidate collection to resolve.
-     *
+     * @param string|null $collection
      * @return string|null
      */
     protected function resolveSlugCollection(?string $collection): ?string
@@ -377,12 +497,10 @@ trait HasUrl
     }
 
     /**
-     * Persists the (slug, collection) pair into Slug storage for this model.
-     * Role: Upsert the Slug row using the (slugable_type, slugable_id) tuple to keep exactly one record.
+     * Upsert the Slug row using the (slugable_type, slugable_id) tuple to keep exactly one record.
      *
-     * @param string|null $slug Normalized slug to persist (nullable).
-     * @param string|null $collection Resolved collection to persist (nullable).
-     *
+     * @param string|null $slug
+     * @param string|null $collection
      * @return void
      */
     protected function persistSlugPair(?string $slug, ?string $collection): void
@@ -405,11 +523,9 @@ trait HasUrl
     }
 
     /**
-     * Fetches the Slug record for this model, optionally verifying collection equality.
-     * Role: Retrieve the single Slug row and filter by collection when provided.
+     * Fetch the Slug record, optionally verifying collection equality.
      *
-     * @param string|null $collection Target collection to match; null returns the single row as-is.
-     *
+     * @param string|null $collection
      * @return Slug|null
      */
     protected function getSlugRecord(?string $collection): ?Slug
@@ -429,11 +545,448 @@ trait HasUrl
     }
 
     /**
-     * Builds a success envelope payload (optionally with data).
-     * Role: Provide a unified response format for success paths.
+     * Check for an active (non-deleted) URL conflict with the given full URL.
+     * Throws if a different model already owns the same active URL.
      *
-     * @param mixed|null $data Optional payload to include in the success envelope.
+     * @param string $fullUrl
+     * @return void
+     * @throws UrlConflictException
+     */
+    protected function ensureNoActiveFullUrlConflict(string $fullUrl): void
+    {
+        /** @var Model $this */
+        $conflict = Url::query()
+            ->where('full_url', $fullUrl)
+            ->whereNull('deleted_at')
+            ->where(function (Builder $q) {
+                $q->where('urlable_type', '!=', $this->getMorphClass())
+                    ->orWhere('urlable_id', '!=', $this->getKey());
+            })
+            ->exists();
+
+        if ($conflict) {
+            throw new UrlConflictException('Active full_url must be unique among all models.');
+        }
+    }
+
+    /**
+     * Check for an active (non-deleted) slug conflict in the same type and collection.
+     * Throws if another model uses the same slug.
      *
+     * @param string|null $collection
+     * @param string|null $slug
+     * @return void
+     * @throws SlugConflictException
+     */
+    protected function ensureNoActiveSlugConflict(?string $collection, ?string $slug): void
+    {
+        if ($slug === null) {
+            return;
+        }
+
+        $query = Slug::query()
+            ->where('slugable_type', $this->getMorphClass())
+            ->where('slug', $slug)
+            ->whereNull('deleted_at');
+
+        $query = $collection === null
+            ? $query->whereNull('collection')
+            : $query->where('collection', $collection);
+
+        $conflict = $query
+            ->where(function (Builder $q) {
+                $q->where('slugable_id', '!=', $this->getKey());
+            })
+            ->exists();
+
+        if ($conflict) {
+            throw new SlugConflictException('Active slug is already in use by another record.');
+        }
+    }
+
+    /**
+     * Permanently remove soft-deleted URLs that match the given full URL.
+     * This is used right before inserting a new active URL for the same path.
+     *
+     * @param string $fullUrl
+     * @return void
+     */
+    protected function purgeTrashedFullUrlDuplicates(string $fullUrl): void
+    {
+        Url::query()
+            ->where('full_url', $fullUrl)
+            ->onlyTrashed()
+            ->forceDelete();
+    }
+
+    /**
+     * Synchronize the versioned Url row with the current computed full URL (self).
+     * - Creates version=1 if none exists.
+     * - If changed, soft-deletes previous active and inserts next version.
+     * Database operations are wrapped in a transaction to keep changes atomic.
+     *
+     * @return void
+     * @throws Throwable
+     */
+    protected function syncVersionedUrl(): void
+    {
+        /** @var Model&UrlContract $this */
+
+        $newFullUrl = (string) $this->getFullUrl();
+
+        $slugRow = $this->slugRecord()->withTrashed()->first();
+        $collection = $slugRow?->collection;
+
+        $currentActive = $this->urlRecord()->first();
+
+        if (!$currentActive) {
+            DB::transaction(function () use ($newFullUrl, $collection) {
+                $this->ensureNoActiveFullUrlConflict($newFullUrl);
+                $this->purgeTrashedFullUrlDuplicates($newFullUrl);
+
+                Url::query()->create([
+                    'urlable_type' => $this->getMorphClass(),
+                    'urlable_id'   => $this->getKey(),
+                    'full_url'     => $newFullUrl,
+                    'collection'   => $collection,
+                    'version'      => 1,
+                ]);
+
+                // Fire created event
+                event(new UrlChanged($this, null, $newFullUrl, 1));
+            });
+
+            return;
+        }
+
+        if ($currentActive->full_url === $newFullUrl) {
+            if ($currentActive->collection !== $collection) {
+                $currentActive->collection = $collection;
+                $currentActive->save();
+            }
+            return;
+        }
+
+        DB::transaction(function () use ($currentActive, $newFullUrl, $collection) {
+            $this->ensureNoActiveFullUrlConflict($newFullUrl);
+            $this->purgeTrashedFullUrlDuplicates($newFullUrl);
+
+            $nextVersion = (int) $currentActive->version + 1;
+            $oldFullUrl  = (string) $currentActive->full_url;
+
+            $currentActive->delete();
+
+            Url::query()->create([
+                'urlable_type' => $this->getMorphClass(),
+                'urlable_id'   => $this->getKey(),
+                'full_url'     => $newFullUrl,
+                'collection'   => $collection,
+                'version'      => $nextVersion,
+            ]);
+
+            // Fire changed event
+            event(new UrlChanged($this, $oldFullUrl, $newFullUrl, $nextVersion));
+        });
+    }
+
+    /**
+     * Synchronize the versioned Url row for another model that implements UrlContract.
+     * Used for cascading updates on descendants.
+     *
+     * @param Model&UrlContract $model
+     * @return void
+     * @throws Throwable
+     */
+    protected function syncVersionedUrlFor(Model&UrlContract $model): void
+    {
+        $newFullUrl = (string) $model->getFullUrl();
+
+        $slugRow = Slug::query()
+            ->ofSlugable($model->getMorphClass(), $model->getKey())
+            ->withTrashed()
+            ->first();
+
+        $collection = $slugRow?->collection;
+
+        $currentActive = Url::query()
+            ->ofUrlable($model->getMorphClass(), $model->getKey())
+            ->whereNull('deleted_at')
+            ->orderByDesc('version')
+            ->first();
+
+        DB::transaction(function () use ($model, $newFullUrl, $collection, $currentActive) {
+            $conflict = Url::query()
+                ->where('full_url', $newFullUrl)
+                ->whereNull('deleted_at')
+                ->where(function (Builder $q) use ($model) {
+                    $q->where('urlable_type', '!=', $model->getMorphClass())
+                        ->orWhere('urlable_id', '!=', $model->getKey());
+                })
+                ->exists();
+
+            if ($conflict) {
+                throw new UrlConflictException('Active full_url must be unique among all models.');
+            }
+
+            Url::query()
+                ->where('full_url', $newFullUrl)
+                ->onlyTrashed()
+                ->forceDelete();
+
+            if (!$currentActive) {
+                Url::query()->create([
+                    'urlable_type' => $model->getMorphClass(),
+                    'urlable_id'   => $model->getKey(),
+                    'full_url'     => $newFullUrl,
+                    'collection'   => $collection,
+                    'version'      => 1,
+                ]);
+
+                event(new UrlChanged($model, null, $newFullUrl, 1));
+                return;
+            }
+
+            if ($currentActive->full_url === $newFullUrl) {
+                if ($currentActive->collection !== $collection) {
+                    $currentActive->collection = $collection;
+                    $currentActive->save();
+                }
+                return;
+            }
+
+            $nextVersion = (int) $currentActive->version + 1;
+            $oldFullUrl  = (string) $currentActive->full_url;
+
+            $currentActive->delete();
+
+            Url::query()->create([
+                'urlable_type' => $model->getMorphClass(),
+                'urlable_id'   => $model->getKey(),
+                'full_url'     => $newFullUrl,
+                'collection'   => $collection,
+                'version'      => $nextVersion,
+            ]);
+
+            event(new UrlChanged($model, $oldFullUrl, $newFullUrl, $nextVersion));
+        });
+    }
+
+    /**
+     * If the model defines getUrlDescendants(): iterable<Model>, refresh each descendant's URL.
+     * Only descendants that implement UrlContract will be processed.
+     *
+     * @return void
+     * @throws Throwable
+     */
+    protected function refreshDescendantUrls(): void
+    {
+        if (!method_exists($this, 'getUrlDescendants')) {
+            return;
+        }
+
+        $descendants = $this->getUrlDescendants();
+
+        if (!is_iterable($descendants)) {
+            return;
+        }
+
+        foreach ($descendants as $child) {
+            if (!$child instanceof Model) {
+                continue;
+            }
+
+            if (!$child instanceof UrlContract) {
+                continue;
+            }
+
+            $this->syncVersionedUrlFor($child);
+        }
+    }
+
+    /**
+     * Soft or force delete related slug and all URL rows for this model.
+     *
+     * @param bool $force When true, permanently delete; otherwise soft delete.
+     * @return void
+     */
+    protected function deleteRelatedSlugAndUrls(bool $force): void
+    {
+        $type = $this->getMorphClass();
+        $id   = $this->getKey();
+
+        if ($force) {
+            Slug::query()
+                ->ofSlugable($type, $id)
+                ->withTrashed()
+                ->forceDelete();
+
+            Url::query()
+                ->ofUrlable($type, $id)
+                ->withTrashed()
+                ->forceDelete();
+
+            return;
+        }
+
+        // Soft delete: single slug row and all active URLs
+        $this->slugRecord()->delete();
+
+        Url::query()
+            ->ofUrlable($type, $id)
+            ->delete();
+    }
+
+    /**
+     * Restore the slug row of this model if it exists in trash.
+     *
+     * @return void
+     */
+    protected function restoreRelatedSlugIfAvailable(): void
+    {
+        Slug::query()
+            ->ofSlugable($this->getMorphClass(), $this->getKey())
+            ->onlyTrashed()
+            ->restore();
+    }
+
+    /**
+     * Public helper: returns the current active full URL string (if any), without recomputing.
+     *
+     * @return string|null
+     */
+    public function getActiveFullUrl(): ?string
+    {
+        $row = $this->urlRecord()->first();
+        return $row?->full_url;
+    }
+
+    /**
+     * Returns the full URL history (active + optionally trashed) for this model, ordered by version asc.
+     *
+     * @param bool $withTrashed
+     * @return Collection<int, Url>
+     */
+    public function urlHistory(bool $withTrashed = true): Collection
+    {
+        $q = Url::query()
+            ->ofUrlable($this->getMorphClass(), $this->getKey())
+            ->orderBy('version');
+
+        if ($withTrashed) {
+            $q->withTrashed();
+        }
+
+        return $q->get();
+    }
+
+    /**
+     * Temporarily disables descendant cascade inside the given callback.
+     *
+     * @param callable $fn
+     * @return mixed
+     */
+    public function withoutUrlCascade(callable $fn): mixed
+    {
+        $prev = $this->disableUrlCascade;
+        $this->disableUrlCascade = true;
+
+        try {
+            return $fn();
+        } finally {
+            $this->disableUrlCascade = $prev;
+        }
+    }
+
+    /**
+     * Rebuilds (resyncs) URLs for all records of the current model class in chunks.
+     *
+     * @param callable|null $queryHook Optional: function(Builder $q): void to filter/customize the query.
+     * @param int $chunk
+     * @return void
+     * @throws Throwable
+     */
+    public static function rebuildAllUrls(callable $queryHook = null, int $chunk = 500): void
+    {
+        /** @var Model&UrlContract $proto */
+        $proto = new static();
+
+        $q = $proto->newQuery();
+
+        if ($queryHook) {
+            $queryHook($q);
+        }
+
+        $q->chunkById($chunk, function ($items) {
+            /** @var iterable<Model&UrlContract> $items */
+            foreach ($items as $item) {
+                // Directly resync; does not trigger saved() hooks or cascades
+                $item->syncVersionedUrl();
+            }
+        });
+    }
+
+    /**
+     * Resolve the active model that currently owns a given full URL (across all types).
+     * Returns the urlable model if the URL is active; otherwise null.
+     *
+     * @param string $fullUrl
+     * @return Model|null
+     */
+    public static function resolveActiveByFullUrl(string $fullUrl): ?Model
+    {
+        $row = Url::query()
+            ->where('full_url', $fullUrl)
+            ->whereNull('deleted_at')
+            ->first();
+
+        return $row?->urlable;
+    }
+
+    /**
+     * Resolves a redirect target (canonical) for a given old full URL.
+     * If the URL is currently active, returns null (no redirect needed).
+     * If only a trashed URL exists, returns the current active full URL of the same model, if any.
+     *
+     * @param string $fullUrl
+     * @return string|null
+     */
+    public static function resolveRedirectTarget(string $fullUrl): ?string
+    {
+        // If active exists, no redirect needed
+        $active = Url::query()
+            ->where('full_url', $fullUrl)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if ($active) {
+            return null;
+        }
+
+        // Find most recent trashed row for this path
+        $trashed = Url::query()
+            ->where('full_url', $fullUrl)
+            ->onlyTrashed()
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$trashed) {
+            return null;
+        }
+
+        // Get current active URL of the same model
+        $current = Url::query()
+            ->ofUrlable($trashed->urlable_type, $trashed->urlable_id)
+            ->whereNull('deleted_at')
+            ->orderByDesc('version')
+            ->first();
+
+        return $current?->full_url;
+    }
+
+    /**
+     * Build a success envelope payload (optionally with data).
+     *
+     * @param mixed|null $data
      * @return array{ok: bool, data?: mixed}
      */
     protected function okEnvelope(mixed $data = null): array
@@ -442,8 +995,7 @@ trait HasUrl
     }
 
     /**
-     * Builds a failure envelope payload.
-     * Role: Provide a unified response format for failure/empty paths.
+     * Build a failure envelope payload.
      *
      * @return array{ok: bool}
      */
