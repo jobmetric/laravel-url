@@ -29,11 +29,13 @@ return new class extends Migration {
 
             $table->string('collection')->nullable()->index();
 
+            $table->softDeletes();
             $table->timestamps();
 
             $table->unique([
                 'slugable_type',
-                'slugable_id'
+                'slugable_id',
+                'deleted_at',
             ],'SLUG_UNIQUE');
         });
     }

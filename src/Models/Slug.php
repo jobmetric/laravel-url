@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 use JobMetric\Url\Events\UrlableResourceEvent;
 
@@ -25,6 +26,7 @@ use JobMetric\Url\Events\UrlableResourceEvent;
  * @property int $slugable_id The ID of the related model instance.
  * @property string $slug The unique URL (slug) value for the model instance.
  * @property string|null $collection An optional collection name to group URLs.
+ * @property Carbon $deleted_at The timestamp when this URL was soft-deleted.
  * @property Carbon $created_at The timestamp when this URL was created.
  * @property Carbon $updated_at The timestamp when this URL was last updated.
  *
@@ -40,7 +42,7 @@ use JobMetric\Url\Events\UrlableResourceEvent;
  */
 class Slug extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     /**
      * The attributes that are mass assignable.

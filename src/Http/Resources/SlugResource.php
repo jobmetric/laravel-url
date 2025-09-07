@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
  * @property int $slugable_id
  * @property string $slug
  * @property string|null $collection
+ * @property Carbon|null $deleted_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property mixed $slugable_resource
@@ -34,6 +35,7 @@ class SlugResource extends JsonResource
             'slugable_id' => $this->slugable_id,
             'slug' => $this->slug,
             'collection' => $this->collection,
+            'deleted_at' => $this->deleted_at,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
 
