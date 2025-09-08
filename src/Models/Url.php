@@ -6,48 +6,44 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 use JobMetric\Url\Events\UrlableResourceEvent;
 
 /**
  * Class Url
  *
- * Represents a URL (slug) entry associated with any Eloquent model
+ * Represents a versioned full URL entry associated with any Eloquent model
  * via a polymorphic relation.
- *
- * This model is designed to store and resolve slugs for models such as posts,
- * products, users, etc., providing a central place to manage friendly URLs.
  *
  * @package JobMetric\Url
  *
- * @property int $id The primary identifier of the URL row.
- * @property string $urlable_type The class name of the related model.
- * @property int $urlable_id The ID of the related model instance.
- * @property string $full_url The full URL string (up to 2000 characters).
- * @property string|null $collection An optional collection name to group URLs.
- * @property integer $version The version number of the URL for the given urlable.
- * @property Carbon|null $deleted_at The timestamp when this URL was soft-deleted.
- * @property Carbon $created_at The timestamp when this URL was created.
- * @property Carbon $updated_at The timestamp when this URL was last updated.
+ * @property int $id
+ * @property string $urlable_type
+ * @property int $urlable_id
+ * @property string $full_url
+ * @property string|null $collection
+ * @property int $version
+ * @property Carbon|null $deleted_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  *
- * @property-read Model|MorphTo $urlable The related Eloquent model.
- * @property-read mixed $urlable_resource The resource object resolved for the urlable via event.
+ * @property-read Model|MorphTo $urlable
+ * @property-read mixed $urlable_resource
  *
  * @method static Builder|Url whereUrlableType(string $urlable_type)
  * @method static Builder|Url whereUrlableId(int $urlable_id)
  * @method static Builder|Url whereFullUrl(string $full_url)
  * @method static Builder|Url whereCollection(string|null $collection)
  * @method static Builder|Url whereVersion(int $version)
- *
  * @method static Builder|Url ofUrlable(string $urlable_type, int $urlable_id)
+ * @method static Builder|Url active()
  */
 class Url extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     /**
-     * The attributes that are mass assignable.
-     *
      * @var array<int, string>
      */
     protected $fillable = [
@@ -55,12 +51,10 @@ class Url extends Model
         'urlable_id',
         'full_url',
         'collection',
-        'version'
+        'version',
     ];
 
     /**
-     * The attributes that should be cast to native types.
-     *
      * @var array<string, string>
      */
     protected $casts = [
@@ -69,12 +63,11 @@ class Url extends Model
         'full_url' => 'string',
         'collection' => 'string',
         'version' => 'integer',
+        'deleted_at' => 'datetime',
     ];
 
     /**
      * Override the table name using config.
-     *
-     * @return string
      */
     public function getTable(): string
     {
@@ -83,8 +76,6 @@ class Url extends Model
 
     /**
      * Get the parent urlable model (morph-to relation).
-     *
-     * @return MorphTo
      */
     public function urlable(): MorphTo
     {
@@ -92,19 +83,31 @@ class Url extends Model
     }
 
     /**
+     * Scope: only active (non-deleted) rows.
+     */
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->whereNull('deleted_at');
+    }
+
+    /**
+     * Scope: filter by collection (NULL-safe).
+     */
+    public function scopeWhereCollection(Builder $query, ?string $collection): Builder
+    {
+        return $collection === null
+            ? $query->whereNull('collection')
+            : $query->where('collection', $collection);
+    }
+
+    /**
      * Scope a query to only include URLs of a given urlable.
-     *
-     * @param Builder $query
-     * @param string $urlable_type
-     * @param int $urlable_id
-     *
-     * @return Builder
      */
     public function scopeOfUrlable(Builder $query, string $urlable_type, int $urlable_id): Builder
     {
         return $query->where([
             'urlable_type' => $urlable_type,
-            'urlable_id' => $urlable_id
+            'urlable_id' => $urlable_id,
         ]);
     }
 
@@ -117,7 +120,12 @@ class Url extends Model
      */
     public function getUrlableResourceAttribute(): mixed
     {
-        $event = new UrlableResourceEvent($this->urlable);
+        $model = $this->urlable;
+        if (!$model) {
+            return null;
+        }
+
+        $event = new UrlableResourceEvent($model);
         event($event);
 
         return $event->resource;

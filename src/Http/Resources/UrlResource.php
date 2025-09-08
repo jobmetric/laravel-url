@@ -15,11 +15,12 @@ use Illuminate\Support\Carbon;
  * @property int $urlable_id
  * @property string $full_url
  * @property string|null $collection
- * @property integer $version
+ * @property int $version
  * @property Carbon|null $deleted_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
- * @property mixed $urlable_resource
+ *
+ * @property-read  mixed $urlable_resource
  */
 class UrlResource extends JsonResource
 {
@@ -37,11 +38,14 @@ class UrlResource extends JsonResource
             'full_url' => $this->full_url,
             'collection' => $this->collection,
             'version' => $this->version,
-            'deleted_at' => $this->deleted_at,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
 
-            'urlable' => $this?->urlable_resource,
+            // ISO 8601 timestamps for interoperability across clients
+            'deleted_at' => $this->deleted_at?->toISOString(),
+            'created_at' => $this->created_at?->toISOString(),
+            'updated_at' => $this->updated_at?->toISOString(),
+
+            // Resource derived from UrlableResourceEvent
+            'urlable' => $this->urlable_resource,
         ];
     }
 }
