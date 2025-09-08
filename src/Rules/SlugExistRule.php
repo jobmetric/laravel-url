@@ -1,90 +1,90 @@
 <?php
+declare(strict_types=1);
 
 namespace JobMetric\Url\Rules;
 
-use Illuminate\Contracts\Validation\Rule;
-use Illuminate\Database\Eloquent\Builder;
+use Closure;
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Support\Str;
 use JobMetric\Url\Models\Slug;
 
 /**
- * Validation rule to ensure a slug is unique per model type,
+ * Class SlugExistRule
+ *
+ * Ensures a slug is unique per model type and (optional) collection,
  * excluding an optional current record (for update flows).
+ * Only active (non-deleted) slugs are considered.
  */
-class SlugExistRule implements Rule
+final class SlugExistRule implements ValidationRule
 {
     /**
-     * The fully-qualified class name of the related model (slugable type).
-     *
-     * @var string
+     * Fully-qualified class name of the related model (slugable type).
      */
-    private string $class_name;
+    private string $className;
 
     /**
-     * The media collection name, if applicable (not used in current logic).
-     *
-     * @var string|null
+     * Optional collection name; empty string is treated as null.
      */
     private ?string $collection;
 
     /**
-     * The ID of the current model instance to exclude (useful in updates).
-     *
-     * @var int|null
+     * Current model ID to exclude from uniqueness check (useful on updates).
      */
-    private ?int $object_id;
+    private ?int $objectId;
 
     /**
-     * @param string $class_name Related model class (slugable_type)
-     * @param string|null $collection Optional media collection name, if applicable
-     * @param int|null $object_id Optional model ID to exclude
+     * @param string $className Related model class (slugable_type).
+     * @param string|null $collection Optional collection scope (null for default).
+     * @param int|null $objectId Optional model ID to exclude.
      */
-    public function __construct(string $class_name, ?string $collection = null, ?int $object_id = null)
+    public function __construct(string $className, ?string $collection = null, ?int $objectId = null)
     {
-        $this->class_name = $class_name;
-        $this->collection = $collection;
-        $this->object_id = $object_id;
+        $this->className = $className;
+        $this->collection = ($collection === '') ? null : $collection;
+        $this->objectId = $objectId;
     }
 
     /**
-     * Determine if the validation rule passes.
+     * Validate the attribute.
+     *
+     * - Normalizes the input slug exactly like HasUrl::normalizeSlugPair:
+     *   slugify + trim + limit to 100 chars.
+     * - Checks uniqueness among active (non-deleted) records only.
      *
      * @param string $attribute
      * @param mixed $value
-     * @return bool
+     * @param Closure $fail
+     *
+     * @return void
      */
-    public function passes($attribute, $value): bool
+    public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         // Let other rules (required|string) handle empties.
         if ($value === null || $value === '') {
-            return true;
+            return;
         }
 
-        $slug = is_string($value) ? trim($value) : (string)$value;
+        // Normalize slug exactly as in HasUrl
+        $raw = is_string($value) ? trim($value) : (string)$value;
+        $slug = Str::limit(Str::slug($raw), 100, '');
 
-        /** @var Builder $query */
         $query = Slug::query()
-            ->where('slugable_type', $this->class_name)
+            ->where('slugable_type', $this->className)
             ->where('slug', $slug)
-            ->when($this->object_id, function (Builder $q) {
-                $q->where('slugable_id', '!=', $this->object_id);
-            });
+            ->whereNull('deleted_at'); // consider only active slugs
 
-        if (is_null($this->collection)) {
+        if ($this->collection === null) {
             $query->whereNull('collection');
         } else {
             $query->where('collection', $this->collection);
         }
 
-        return !$query->exists();
-    }
+        if (!is_null($this->objectId)) {
+            $query->where('slugable_id', '!=', $this->objectId);
+        }
 
-    /**
-     * Get the validation error message.
-     *
-     * @return string
-     */
-    public function message(): string
-    {
-        return trans('url::base.rule.exist');
+        if ($query->exists()) {
+            $fail(trans('url::base.rule.exist'));
+        }
     }
 }
