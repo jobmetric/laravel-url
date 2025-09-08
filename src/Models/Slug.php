@@ -21,32 +21,30 @@ use JobMetric\Url\Events\UrlableResourceEvent;
  *
  * @package JobMetric\Url
  *
- * @property int $id The primary identifier of the URL row.
- * @property string $slugable_type The class name of the related model.
- * @property int $slugable_id The ID of the related model instance.
- * @property string $slug The unique URL (slug) value for the model instance.
- * @property string|null $collection An optional collection name to group URLs.
- * @property Carbon $deleted_at The timestamp when this URL was soft-deleted.
- * @property Carbon $created_at The timestamp when this URL was created.
- * @property Carbon $updated_at The timestamp when this URL was last updated.
+ * @property int $id
+ * @property string $slugable_type
+ * @property int $slugable_id
+ * @property string $slug
+ * @property string|null $collection
+ * @property Carbon|null $deleted_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  *
- * @property-read Model|MorphTo $slugable The related Eloquent model.
- * @property-read mixed $slugable_resource The resource object resolved for the slugable via event.
+ * @property-read Model|MorphTo $slugable
+ * @property-read mixed $slugable_resource
  *
  * @method static Builder|Slug whereSlugableType(string $slugable_type)
  * @method static Builder|Slug whereSlugableId(int $slugable_id)
  * @method static Builder|Slug whereSlug(string $slug)
  * @method static Builder|Slug whereCollection(string|null $collection)
- *
  * @method static Builder|Slug ofSlugable(string $slugable_type, int $slugable_id)
+ * @method static Builder|Slug active()
  */
 class Slug extends Model
 {
     use HasFactory, SoftDeletes;
 
     /**
-     * The attributes that are mass assignable.
-     *
      * @var array<int, string>
      */
     protected $fillable = [
@@ -57,21 +55,18 @@ class Slug extends Model
     ];
 
     /**
-     * The attributes that should be cast to native types.
-     *
      * @var array<string, string>
      */
     protected $casts = [
         'slugable_type' => 'string',
-        'slugable_id' => 'integer',
-        'slug' => 'string',
-        'collection' => 'string',
+        'slugable_id'   => 'integer',
+        'slug'          => 'string',
+        'collection'    => 'string',
+        'deleted_at'    => 'datetime',
     ];
 
     /**
      * Override the table name using config.
-     *
-     * @return string
      */
     public function getTable(): string
     {
@@ -80,8 +75,6 @@ class Slug extends Model
 
     /**
      * Get the parent slugable model (morph-to relation).
-     *
-     * @return MorphTo
      */
     public function slugable(): MorphTo
     {
@@ -89,32 +82,49 @@ class Slug extends Model
     }
 
     /**
+     * Scope: only active (non-deleted) rows.
+     */
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->whereNull('deleted_at');
+    }
+
+    /**
+     * Scope: filter by collection (NULL-safe).
+     */
+    public function scopeWhereCollection(Builder $query, ?string $collection): Builder
+    {
+        return $collection === null
+            ? $query->whereNull('collection')
+            : $query->where('collection', $collection);
+    }
+
+    /**
      * Scope a query to only include URLs of a given slugable.
-     *
-     * @param Builder $query
-     * @param string $slugable_type
-     * @param int $slugable_id
-     *
-     * @return Builder
      */
     public function scopeOfSlugable(Builder $query, string $slugable_type, int $slugable_id): Builder
     {
         return $query->where([
             'slugable_type' => $slugable_type,
-            'slugable_id' => $slugable_id
+            'slugable_id'   => $slugable_id,
         ]);
     }
 
     /**
      * Accessor to get the resource representation of the slugable model.
-     * Fires the SlugableResourceEvent to allow external listeners
-     * to transform the slugable into a resource.
+     * Fires the UrlableResourceEvent to allow external listeners to transform the slugable into a resource.
      *
      * @return mixed
      */
     public function getSlugableResourceAttribute(): mixed
     {
-        $event = new UrlableResourceEvent($this->slugable);
+        // Avoid firing event when no related model is available.
+        $model = $this->slugable;
+        if (!$model) {
+            return null;
+        }
+
+        $event = new UrlableResourceEvent($model);
         event($event);
 
         return $event->resource;
