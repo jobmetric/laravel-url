@@ -59,10 +59,10 @@ class Slug extends Model
      */
     protected $casts = [
         'slugable_type' => 'string',
-        'slugable_id'   => 'integer',
-        'slug'          => 'string',
-        'collection'    => 'string',
-        'deleted_at'    => 'datetime',
+        'slugable_id' => 'integer',
+        'slug' => 'string',
+        'collection' => 'string',
+        'deleted_at' => 'datetime',
     ];
 
     /**
@@ -106,7 +106,7 @@ class Slug extends Model
     {
         return $query->where([
             'slugable_type' => $slugable_type,
-            'slugable_id'   => $slugable_id,
+            'slugable_id' => $slugable_id,
         ]);
     }
 

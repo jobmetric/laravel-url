@@ -33,17 +33,17 @@ class SlugResource extends JsonResource
     {
         return [
             'slugable_type' => $this->slugable_type,
-            'slugable_id'   => $this->slugable_id,
-            'slug'          => $this->slug,
-            'collection'    => $this->collection,
+            'slugable_id' => $this->slugable_id,
+            'slug' => $this->slug,
+            'collection' => $this->collection,
 
             // Use ISO 8601 for consistent API datetime formatting
-            'deleted_at'    => $this->deleted_at?->toISOString(),
-            'created_at'    => $this->created_at?->toISOString(),
-            'updated_at'    => $this->updated_at?->toISOString(),
+            'deleted_at' => $this->deleted_at?->toISOString(),
+            'created_at' => $this->created_at?->toISOString(),
+            'updated_at' => $this->updated_at?->toISOString(),
 
             // Resource derived from UrlableResourceEvent
-            'slugable'      => $this->slugable_resource,
+            'slugable' => $this->slugable_resource,
         ];
     }
 }
