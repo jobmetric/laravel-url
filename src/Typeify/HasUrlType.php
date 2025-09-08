@@ -5,12 +5,14 @@ namespace JobMetric\Url\Typeify;
 /**
  * Trait HasUrlType
  *
+ * Add URL capability to a type.
+ *
  * @package JobMetric\Url
  */
 trait HasUrlType
 {
     /**
-     * Enable Url.
+     * Enable URL capability on the current type.
      *
      * @return static
      */
@@ -22,12 +24,12 @@ trait HasUrlType
     }
 
     /**
-     * Has Url.
+     * Determine whether the current type has URL capability.
      *
      * @return bool
      */
     public function hasUrl(): bool
     {
-        return $this->getTypeParam('hasUrl', false);
+        return (bool) $this->getTypeParam('hasUrl', false);
     }
 }
