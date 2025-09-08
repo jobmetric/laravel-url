@@ -30,7 +30,6 @@ return [
 
     "exceptions" => [
         "not_found" => "آدرس اینترنتی یافت نشد",
-        "url_too_long" => "آدرس اینترنتی بیش از حد طولانی است.",
         "slug_not_found" => "نامک یافت نشد.",
         "model_url_contract_not_found" => "مدل :model باید قرارداد JobMetric\Url\Contracts\UrlContract را پیاده سازی کند.",
         "slug_conflict" => "این نامک هم‌اکنون توسط رکورد دیگری استفاده می‌شود.",

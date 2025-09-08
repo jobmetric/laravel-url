@@ -30,7 +30,6 @@ return [
 
     "exceptions" => [
         "not_found" => "Url not found",
-        "url_too_long" => "The url is too long.",
         "slug_not_found" => "The slug not found.",
         "model_url_contract_not_found" => "The :model model must implement the JobMetric\Url\Contracts\UrlContract contract.",
         "slug_conflict" => "The slug is already in use by another record.",
