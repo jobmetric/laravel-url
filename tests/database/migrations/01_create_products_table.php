@@ -15,8 +15,17 @@ return new class extends Migration {
         Schema::create('products', function (Blueprint $table) {
             $table->id();
 
+            $table->foreignId('category_id')
+                ->nullable()
+                ->index()
+                ->constrained('categories')
+                ->cascadeOnUpdate()
+                ->cascadeOnDelete();
+
             $table->string('title')->nullable();
-            $table->string('status');
+
+            $table->softDeletes();
+            $table->timestamps();
         });
     }
 

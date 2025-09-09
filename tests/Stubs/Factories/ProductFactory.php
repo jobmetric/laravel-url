@@ -20,18 +20,18 @@ class ProductFactory extends Factory
     public function definition(): array
     {
         return [
+            'category_id' => null,
             'title' => $this->faker->sentence,
-            'status' => $this->faker->randomElement(['draft', 'published', 'archived']),
+            // HasUrl merges "slug" and "slug_collection" into fillable at runtime
             'slug' => $this->faker->slug,
             'slug_collection' => null,
         ];
     }
 
     /**
-     * set title
+     * Set title.
      *
      * @param string $title
-     *
      * @return static
      */
     public function setTitle(string $title): static
@@ -42,25 +42,23 @@ class ProductFactory extends Factory
     }
 
     /**
-     * set status
+     * Set category_id.
      *
-     * @param string $status
-     *
+     * @param int $id
      * @return static
      */
-    public function setStatus(string $status): static
+    public function setCategoryId(int $id): static
     {
         return $this->state(fn(array $attributes) => [
-            'status' => $status,
+            'category_id' => $id,
         ]);
     }
 
     /**
-     * set url (slug and slug_collection)
+     * Set URL fields (slug and slug_collection).
      *
      * @param string $slug
      * @param string|null $slugCollection
-     *
      * @return static
      */
     public function setUrl(string $slug, string $slugCollection = null): static

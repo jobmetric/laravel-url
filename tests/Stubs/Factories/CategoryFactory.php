@@ -20,18 +20,31 @@ class CategoryFactory extends Factory
     public function definition(): array
     {
         return [
+            'parent_id' => null,
             'title' => $this->faker->sentence,
-            'status' => $this->faker->randomElement(['draft', 'published', 'archived']),
+            // HasUrl merges "slug" and "slug_collection" into fillable at runtime
             'slug' => $this->faker->slug,
             'slug_collection' => null,
         ];
     }
 
     /**
-     * set title
+     * Set parent_id.
+     *
+     * @param int|null $parentId
+     * @return static
+     */
+    public function setParentId(int $parentId = null): static
+    {
+        return $this->state(fn(array $attributes) => [
+            'parent_id' => $parentId,
+        ]);
+    }
+
+    /**
+     * Set title.
      *
      * @param string $title
-     *
      * @return static
      */
     public function setTitle(string $title): static
@@ -42,25 +55,10 @@ class CategoryFactory extends Factory
     }
 
     /**
-     * set status
-     *
-     * @param string $status
-     *
-     * @return static
-     */
-    public function setStatus(string $status): static
-    {
-        return $this->state(fn(array $attributes) => [
-            'status' => $status,
-        ]);
-    }
-
-    /**
-     * set url (slug and slug_collection)
+     * Set URL fields (slug and slug_collection).
      *
      * @param string $slug
      * @param string|null $slugCollection
-     *
      * @return static
      */
     public function setUrl(string $slug, string $slugCollection = null): static
