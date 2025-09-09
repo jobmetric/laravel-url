@@ -86,6 +86,13 @@ trait HasUrl
     protected bool $disableUrlCascade = false;
 
     /**
+     * Internal flag to detect restore flow and skip saved-hook syncing.
+     *
+     * @var bool
+     */
+    protected bool $isUrlRestoring = false;
+
+    /**
      * Make "slug" and "slug_collection" mass-assignable for convenient input binding.
      *
      * @return void
@@ -146,6 +153,16 @@ trait HasUrl
         });
 
         static::saved(function (Model $model) {
+            // If we are in the middle of a restore, skip saved-hook syncing.
+            if (property_exists($model, 'isUrlRestoring') && $model->isUrlRestoring === true) {
+                // Just clear temp flags; restored-hook will handle proper syncing.
+                $model->innerSlug = ['slug' => null, 'collection' => null];
+                $model->slugChanged = false;
+                $model->preSaveFullUrl = null;
+
+                return;
+            }
+
             // If slug/collection going to change, ensure no active slug conflict BEFORE upsert
             if (!empty($model->innerSlug['slug']) || $model->innerSlug['collection'] !== null) {
                 if ($model->slugChanged) {
@@ -196,8 +213,13 @@ trait HasUrl
                 $model->deleteRelatedSlugAndUrls(true);
             });
 
-            // Before restoring: validate conflicts (slug & URL)
+            // Before restoring: validate conflicts (slug ONLY).
             static::restoring(function (Model $model) {
+                // mark restore flow
+                if (property_exists($model, 'isUrlRestoring')) {
+                    $model->isUrlRestoring = true;
+                }
+
                 $trashedSlug = Slug::query()
                     ->ofSlugable($model->getMorphClass(), $model->getKey())
                     ->withTrashed()
@@ -206,17 +228,19 @@ trait HasUrl
                 if ($trashedSlug) {
                     $model->ensureNoActiveSlugConflict($trashedSlug->collection, $trashedSlug->slug);
                 }
-
-                /** @var UrlContract $model */
-                $newFullUrl = (string) $model->getFullUrl();
-                $model->ensureNoActiveFullUrlConflict($newFullUrl);
             });
 
-            // After restoring: restore slug row and resync versioned URL (after commit)
+            // After restoring: restore slug row and resync versioned URL (after commit).
+            // Conflict on full URL is checked inside syncVersionedUrl(), now that slug is restored.
             static::restored(function (Model $model) {
                 $after = function () use ($model) {
                     $model->restoreRelatedSlugIfAvailable();
                     $model->syncVersionedUrl();
+
+                    // clear restore flag
+                    if (property_exists($model, 'isUrlRestoring')) {
+                        $model->isUrlRestoring = false;
+                    }
                 };
 
                 if (method_exists(DB::class, 'afterCommit')) {
@@ -565,7 +589,7 @@ trait HasUrl
             ->exists();
 
         if ($conflict) {
-            throw new UrlConflictException('Active full_url must be unique among all models.');
+            throw new UrlConflictException();
         }
     }
 
@@ -600,7 +624,7 @@ trait HasUrl
             ->exists();
 
         if ($conflict) {
-            throw new SlugConflictException('Active slug is already in use by another record.');
+            throw new SlugConflictException();
         }
     }
 
@@ -725,7 +749,7 @@ trait HasUrl
                 ->exists();
 
             if ($conflict) {
-                throw new UrlConflictException('Active full_url must be unique among all models.');
+                throw new UrlConflictException();
             }
 
             Url::query()
