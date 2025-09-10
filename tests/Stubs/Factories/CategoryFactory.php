@@ -7,6 +7,11 @@ use JobMetric\Url\Tests\Stubs\Models\Category;
 
 /**
  * @extends Factory<Category>
+ *
+ * Factory for the Category stub model used in tests.
+ * Note:
+ * - Do NOT persist "slug" or "slug_collection" as real DB columns.
+ * - Instead, set URL via dispatchSlug() in an after-creating hook.
  */
 class CategoryFactory extends Factory
 {
@@ -15,6 +20,8 @@ class CategoryFactory extends Factory
     /**
      * Define the model's default state.
      *
+     * Only real DB columns should be returned here.
+     *
      * @return array<string, mixed>
      */
     public function definition(): array
@@ -22,9 +29,6 @@ class CategoryFactory extends Factory
         return [
             'parent_id' => null,
             'title' => $this->faker->sentence,
-            // HasUrl merges "slug" and "slug_collection" into fillable at runtime
-            'slug' => $this->faker->slug,
-            'slug_collection' => null,
         ];
     }
 
@@ -55,13 +59,15 @@ class CategoryFactory extends Factory
     }
 
     /**
-     * Set URL fields (slug and slug_collection).
+     * Set URL (slug and collection) via the HasUrl trait AFTER the model is created.
+     *
+     * This avoids trying to insert non-existent DB columns like "slug" into the "categories" table.
      *
      * @param string $slug
      * @param string|null $slugCollection
      * @return static
      */
-    public function setUrl(string $slug, string $slugCollection = null): static
+    public function setUrl(string $slug, ?string $slugCollection = null): static
     {
         return $this->state(fn(array $attributes) => [
             'slug' => $slug,

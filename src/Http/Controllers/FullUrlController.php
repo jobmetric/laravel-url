@@ -36,43 +36,60 @@ class FullUrlController extends Controller
      */
     public function __invoke(Request $request)
     {
-        $path = ltrim($request->path(), '/');
+        // Normalize path and candidates
+        $raw = $request->getPathInfo();
+        // e.g. "/a/b/p1/" or "/"
 
-        // Active URL lookup
+        $trimmed = trim($raw, '/');
+        // "a/b/p1" or ""
+
+        $candidates = array_values(array_unique(array_filter([
+            $trimmed,                                            // "a/b/p1"
+            $trimmed === '' ? '' : $trimmed . '/',               // "a/b/p1/"
+            '/' . $trimmed,                                      // "/a/b/p1"
+            $trimmed === '' ? '/' : '/' . $trimmed . '/',        // "/a/b/p1/"
+            $trimmed === '' ? '/' : null,                        // root special-case
+        ])));
+
+        // 1) Try active (latest version, not trashed)
         $active = Url::query()
-            ->where('full_url', $path)
             ->whereNull('deleted_at')
+            ->whereIn('full_url', $candidates)
+            ->orderByDesc('version')
+            ->orderByDesc('id')
             ->first();
 
-        // If not active, try legacy (soft-deleted) URL -> redirect to current canonical
+        // 2) Legacy → 301
         if (!$active) {
-            $trashed = Url::query()
-                ->where('full_url', $path)
-                ->onlyTrashed()
-                ->latest('id')
+            $legacy = Url::withTrashed()
+                ->whereNotNull('deleted_at')
+                ->whereIn('full_url', $candidates)
+                ->orderByDesc('version')
+                ->orderByDesc('id')
                 ->first();
 
-            if ($trashed) {
-                $current = Url::query()
-                    ->ofUrlable($trashed->urlable_type, $trashed->urlable_id)
+            if ($legacy) {
+                $canonical = Url::query()
+                    ->ofUrlable($legacy->urlable_type, $legacy->urlable_id)
                     ->whereNull('deleted_at')
                     ->orderByDesc('version')
+                    ->orderByDesc('id')
                     ->first();
 
-                if ($current && $current->full_url !== $path) {
-                    $target = '/' . ltrim($current->full_url, '/');
+                if ($canonical) {
+                    $target = '/' . ltrim($canonical->full_url, '/');
                     if ($qs = $request->getQueryString()) {
                         $target .= '?' . $qs;
                     }
-
                     return redirect($target, 301);
                 }
+
+                abort(404, trans('url::base.exceptions.not_found'));
             }
 
             abort(404, trans('url::base.exceptions.not_found'));
         }
 
-        // Ensure relation is loaded
         $active->load('urlable');
 
         if (!$active->urlable) {
