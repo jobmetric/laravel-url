@@ -32,6 +32,7 @@ class ProductFactory extends Factory
      * Set title.
      *
      * @param string $title
+     *
      * @return static
      */
     public function setTitle(string $title): static
@@ -42,12 +43,13 @@ class ProductFactory extends Factory
     }
 
     /**
-     * Set category_id.
+     * Set category id (nullable)
      *
-     * @param int $id
+     * @param int|null $id
+     *
      * @return static
      */
-    public function setCategoryId(int $id): static
+    public function setCategoryId(?int $id = null): static
     {
         return $this->state(fn(array $attributes) => [
             'category_id' => $id,
@@ -59,6 +61,7 @@ class ProductFactory extends Factory
      *
      * @param string $slug
      * @param string|null $slugCollection
+     *
      * @return static
      */
     public function setUrl(string $slug, string $slugCollection = null): static
