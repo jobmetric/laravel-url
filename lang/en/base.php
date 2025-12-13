@@ -24,4 +24,15 @@ return [
         "url_conflict" => "This active URL is already used by another record.",
     ],
 
+    "entity_names" => [
+        "url" => "URL",
+    ],
+
+    'events' => [
+        'url_changed' => [
+            'title' => 'URL Changed',
+            'description' => 'This event is triggered when a URL is changed.',
+        ],
+    ],
+
 ];

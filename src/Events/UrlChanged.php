@@ -3,6 +3,8 @@
 namespace JobMetric\Url\Events;
 
 use Illuminate\Database\Eloquent\Model;
+use JobMetric\EventSystem\Contracts\DomainEvent;
+use JobMetric\EventSystem\Support\DomainEventDefinition;
 
 /**
  * Event fired when a model's active full URL is created or changes (versioned).
@@ -11,33 +13,40 @@ use Illuminate\Database\Eloquent\Model;
  * - $new is the newly-activated full URL.
  * - $version is the version number of the newly-activated URL.
  */
-class UrlChanged
+readonly class UrlChanged implements DomainEvent
 {
     /**
-     * @var Model The urlable model whose URL has changed.
+     * Create a new event instance.
      */
-    public Model $model;
+    public function __construct(
+        public Model $model,
+        public ?string $old,
+        public string $new,
+        public int $version
+    ) {
+    }
 
     /**
-     * @var string|null Previous active URL (if any).
+     * Returns the stable technical key for the domain event.
+     *
+     * @return string
      */
-    public ?string $old;
-
-    /**
-     * @var string Newly activated URL.
-     */
-    public string $new;
-
-    /**
-     * @var int Version of the newly activated URL.
-     */
-    public int $version;
-
-    public function __construct(Model $model, ?string $old, string $new, int $version)
+    public static function key(): string
     {
-        $this->model   = $model;
-        $this->old     = $old;
-        $this->new     = $new;
-        $this->version = $version;
+        return 'url.changed';
+    }
+
+    /**
+     * Returns the full metadata definition for this domain event.
+     *
+     * @return DomainEventDefinition
+     */
+    public static function definition(): DomainEventDefinition
+    {
+        return new DomainEventDefinition(self::key(), 'url::base.entity_names.url', 'url::base.events.url_changed.title', 'url::base.events.url_changed.description', 'fas fa-exchange-alt', [
+            'url',
+            'change',
+            'routing',
+        ]);
     }
 }
