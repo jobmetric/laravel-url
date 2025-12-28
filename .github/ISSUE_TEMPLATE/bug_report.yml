@@ -1,0 +1,66 @@
+name: Bug Report
+description: Report an Issue or Bug with the Laravel URL
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We're sorry to hear you have a problem. Can you help us solve it by providing the following details.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What Happened
+      description: What did you expect to happen?
+      placeholder: When I try to create a slug or URL for a model, I get an incorrect result
+    validations:
+      required: true
+  - type: textarea
+    id: how-to-reproduce
+    attributes:
+      label: How to Reproduce
+      description: How did this occur, please add any command or code used and provide a set of reliable steps if possible.
+      placeholder: |
+        Using HasUrl trait and UrlContract:
+        use JobMetric\Url\HasUrl;
+        use JobMetric\Url\Contracts\UrlContract;
+        
+        class Product extends Model implements UrlContract
+        {
+            use HasUrl;
+            
+            public function getFullUrl(): string
+            {
+                return "/shop/{$this->slug}";
+            }
+        }
+        
+        $product = Product::create(['name' => 'MacBook Pro']);
+        $product->dispatchSlug('macbook-pro', 'products');
+    validations:
+      required: true
+  - type: input
+    id: expected-output
+    attributes:
+      label: Expected Output
+      description: What output did you expect to receive?
+      placeholder: "Slug and URL should be created successfully"
+    validations:
+      required: true
+  - type: input
+    id: actual-output
+    attributes:
+      label: Actual Output
+      description: What output did you actually receive?
+      placeholder: "Slug creation fails or throws an exception"
+    validations:
+      required: true
+  - type: input
+    id: package-version
+    attributes:
+      label: Package Version
+      description: What version of Laravel URL are you running? Please be as specific as possible
+      placeholder: 1.0.0
+    validations:
+      required: true
+
